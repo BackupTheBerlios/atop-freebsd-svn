@@ -151,7 +151,8 @@ struct pacctadm {
 	struct stat	stat;
 } pacctadm[] = {
 	{ "/var/log/pacct",		{0, }, },
-	{ "/var/account/pacct",		{0, }, }
+	{ "/var/account/pacct",		{0, }, },
+	{ "/var/account/acct",		{0, }, } /* FreeBSD default accounting file */
 };
 
 /*
