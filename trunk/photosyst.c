@@ -257,6 +257,18 @@ static struct v6tab 		v6tab[] = {
 
 static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 
+#ifdef FREEBSD
+#include <sys/param.h>
+#include <sys/sysctl.h> 
+#include <sys/errno.h> 
+#define GETSYSCTL(name, var) getsysctl(name, &(var), sizeof(var))
+#include <sys/user.h>
+#include <kvm.h>
+
+extern  kvm_t *kd;
+#endif
+
+#ifdef linux
 void
 photosyst(struct sstat *si)
 {
@@ -988,6 +1000,180 @@ photosyst(struct sstat *si)
 		wwwvalid = getwwwstat(80, &(si->www));
 #endif
 }
+#elif defined(FREEBSD)
+static void
+getsysctl(const char *name, void *ptr, size_t len)
+{
+    size_t nlen = len;
+
+    if (sysctlbyname(name, ptr, &nlen, NULL, 0) == -1) {
+	if(errno == ENOENT)
+	    return; /* silently return if sysctl not found */
+	fprintf(stderr, "atop: sysctl(%s...) failed: %s (%d)\n", name,
+	    strerror(errno), errno);
+	exit(1);
+    }
+    if (nlen != len) {
+	fprintf(stderr, "atop: sysctl(%s...) expected %lu, got %lu\n",
+	    name, (unsigned long)len, (unsigned long)nlen);
+	exit(1);
+    }
+}
+
+void
+photosyst(struct sstat *si)
+{
+	register int	i;
+#if	HTTPSTATS
+	static int	wwwvalid = 1;
+#endif
+
+	struct loadavg
+	{
+	  unsigned int ldavg[3];
+	  long fscale;
+	};
+	struct loadavg sysload;
+
+	memset(si, 0, sizeof(struct sstat));
+
+	int ncpu = 0, maxcpus = 0, cur = 0;
+	size_t size;
+	unsigned int ticks = (unsigned int)sysconf(_SC_CLK_TCK),
+	    multiplier = ((uint64_t)1000L / ticks);
+	
+	GETSYSCTL("hw.ncpu", ncpu);
+	if(ncpu)
+	    si->cpu.nrcpu = ncpu;
+	if (si->cpu.nrcpu == 0)
+		si->cpu.nrcpu = 1;
+	int forks = 0;
+	GETSYSCTL("vm.stats.vm.v_forkpages", forks);
+	si->cpu.nprocs = forks;
+	GETSYSCTL("kern.smp.maxcpus", maxcpus);
+	
+	size = maxcpus * CPUSTATES * sizeof(long);
+	long cp_times[size];
+	sysctlbyname("kern.cp_times", &cp_times, &size, NULL, 0);
+	for (i = 0; i < ncpu; i++) {
+	    si->cpu.cpu[i].cpunr	= i;
+	    si->cpu.cpu[i].utime	= cp_times[CP_USER+cur] * multiplier;
+	    si->cpu.all.utime += si->cpu.cpu[i].utime;
+	    
+	    si->cpu.cpu[i].ntime	= cp_times[CP_NICE+cur] * multiplier;
+	    si->cpu.all.ntime += si->cpu.cpu[i].ntime;
+	    
+	    si->cpu.cpu[i].stime	= cp_times[CP_SYS+cur] * multiplier;
+	    si->cpu.all.stime += si->cpu.cpu[i].stime;
+	    
+	    si->cpu.cpu[i].itime	= cp_times[CP_IDLE+cur] * multiplier;
+	    si->cpu.all.itime += si->cpu.cpu[i].itime;
+
+	    si->cpu.cpu[i].Itime	= cp_times[CP_INTR+cur] * multiplier;
+	    si->cpu.all.Itime += si->cpu.cpu[i].Itime;
+	    
+	    cur+=CPUSTATES;
+	    
+	}
+        
+
+	GETSYSCTL("vm.loadavg", sysload);
+	/* convert load averages to doubles */
+	si->cpu.lavg1	= (double) sysload.ldavg[0] / sysload.fscale;
+	si->cpu.lavg5	= (double) sysload.ldavg[1] / sysload.fscale;
+	si->cpu.lavg15	= (double) sysload.ldavg[2] / sysload.fscale;
+	
+	int devint = 0, csw = 0;
+	GETSYSCTL("vm.stats.sys.v_intr", devint);
+	if(devint)
+	    si->cpu.devint = devint;
+	GETSYSCTL("vm.stats.sys.v_swtch", csw);
+	if(csw)
+	    si->cpu.csw = csw;
+
+	/*
+	** gather frequency scaling info.
+	** store them in binary form
+	*/
+        int clockrate = 0, curclock = 0;
+	
+	GETSYSCTL("hw.clockrate", clockrate);
+	GETSYSCTL("dev.cpu.0.freq", curclock); /* never saw dev.cpu.1.. */
+        for (i = 0; i < si->cpu.nrcpu; ++i)
+        {
+                si->cpu.cpu[i].freqcnt.maxfreq	= clockrate;
+                if (curclock) /* cpufreq detected */
+            	    si->cpu.cpu[i].freqcnt.cnt = curclock;
+            	else
+            	    si->cpu.cpu[i].freqcnt.cnt = clockrate;
+                si->cpu.cpu[i].freqcnt.ticks = 0;
+        }
+
+	/*
+	** gather memory-related statistics from the file /proc/meminfo and
+	** store them in binary form
+	**
+	** in the file /proc/meminfo a 2.4 kernel starts with two lines
+	** headed by the strings "Mem:" and "Swap:" containing all required
+	** fields, except proper value for page cache
+        ** if these lines are present we try to skip parsing the rest
+	** of the lines; if these lines are not present we should get the
+	** required field from other lines
+	*/
+	si->mem.physmem	 	= (count_t)-1; 
+	si->mem.freemem		= (count_t)-1;
+	si->mem.buffermem	= (count_t)-1;
+	si->mem.cachemem  	= (count_t)-1;
+	si->mem.slabmem		= (count_t) 0;
+	si->mem.totswap  	= (count_t)-1;
+	si->mem.freeswap 	= (count_t)-1;
+	si->mem.committed 	= (count_t) 0;
+
+	long physmem = 0;
+	unsigned int freemem = 0, cachemem = 0, inactivemem = 0, wiremem = 0;
+	GETSYSCTL("hw.physmem", physmem);
+	if(physmem)
+	    si->mem.physmem=physmem/pagesize;
+	GETSYSCTL("vm.stats.vm.v_free_count", freemem);
+	if(freemem)
+	    si->mem.freemem=freemem;
+	GETSYSCTL("vm.stats.vm.v_cache_count", cachemem);
+	if(cachemem)
+	    si->mem.cachemem=cachemem;
+	GETSYSCTL("vm.stats.vm.v_inactive_count", inactivemem);
+	if(inactivemem) /* hack. fixme plz. see http://lists.freebsd.org/pipermail/freebsd-questions/2005-February/075925.html */
+	    si->mem.cachedrt=inactivemem;
+	GETSYSCTL("vm.stats.vm.v_wire_count", wiremem);
+	if(wiremem) /* hack. fixme plz. see http://lists.freebsd.org/pipermail/freebsd-questions/2005-February/075925.html */
+	    si->mem.buffermem=wiremem;
+
+	/* get swap information from kvm */
+	struct kvm_swap swapary[1];
+	i = kvm_getswapinfo(kd, swapary, 1, 0);
+	if (i >= 0 && swapary[0].ksw_total != 0){
+	    si->mem.totswap=swapary[0].ksw_total;
+	    si->mem.freeswap=swapary[0].ksw_total - swapary[0].ksw_used;
+	}
+	/* swap statistic */
+	int pswapin = 0, pswapout = 0;
+	GETSYSCTL("vm.stats.vm.v_swapin",pswapin);
+	if(pswapin)
+	    si->mem.swins = pswapin;
+	GETSYSCTL("vm.stats.vm.v_swapout",pswapout);
+	if(pswapout)
+	    si->mem.swouts = pswapout;
+	
+
+	/*
+	** fetch application-specific counters
+	*/
+#if	HTTPSTATS
+	if ( wwwvalid)
+		wwwvalid = getwwwstat(80, &(si->www));
+#endif
+}
+
+#endif
 
 /*
 ** set of subroutines to determine which disks should be monitored
@@ -1119,6 +1305,7 @@ lvmmapname(unsigned int major, unsigned int minor,
 	*(px->name+maxlen-1) = 0;
 }
 
+#ifdef linux
 /*
 ** this table is used in the function isdisk()
 **
@@ -1243,7 +1430,29 @@ getbootlinux(long hertz)
 	}
 
 	return boottime;
+} /* Linux */
+# elif defined(FREEBSD)
+ time_t
+ getbootbsd(long hertz)
+ {
+       int mib [2];
+       size_t size;
+       // time_t now;
+       struct timeval boottime;
+       time_t		uptime = 0;
+
+       // (void)time(&now);
+
+       mib [0] = CTL_KERN;
+       mib [1] = KERN_BOOTTIME;
+
+       size = sizeof(boottime);
+
+       if (sysctl(mib, 2, &boottime, &size, NULL, 0) != -1)
+    	    uptime = boottime.tv_sec;
+    	return uptime;
 }
+#endif
 
 #if	HTTPSTATS
 /*

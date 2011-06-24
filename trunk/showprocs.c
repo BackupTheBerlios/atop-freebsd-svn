@@ -88,7 +88,11 @@ static const char rcsid[] = "$Id: showprocs.c,v 1.13 2010/11/12 06:11:58 gerlof 
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <termio.h>
+#ifdef linux
+ #include <termio.h>
+#elif defined(FREEBSD)
+ #include <sys/priority.h>
+#endif
 #include <unistd.h>
 #include <stdarg.h>
 #include <curses.h>
@@ -998,6 +1002,7 @@ proc_printdef procprt_TSLPU =
 char *
 procprt_POLI_a(struct pstat *curstat, int avgval, int nsecs)
 {
+#ifdef linux
         switch (curstat->cpu.policy)
         {
                 case SCHED_NORMAL:
@@ -1019,7 +1024,23 @@ procprt_POLI_a(struct pstat *curstat, int avgval, int nsecs)
                         return "idle";
                         break;
         }
-        return "?   ";
+#elif defined(FREEBSD)
+	switch PRI_BASE(curstat->cpu.policy){
+	    case PRI_ITHD:
+		return "intr";
+		break;
+	    case PRI_REALTIME:
+		return "rltm";
+		break;
+	    case PRI_TIMESHARE:
+		return "tmsh";
+		break;
+	    case PRI_IDLE:
+		return "idle";
+		break;
+	}
+#endif
+	return "?   ";
 }
 
 char *

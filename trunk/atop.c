@@ -298,6 +298,12 @@ static const char rcsid[] = "$Id: atop.c,v 1.49 2010/10/23 14:01:00 gerlof Exp $
 #include "showgeneric.h"
 #include "parseable.h"
 
+#ifdef FREEBSD // FreeBSD using kvm to manage processes
+ #include <kvm.h>
+ #include <paths.h>
+ kvm_t *kd;
+#endif
+
 #define	allflags  "ab:cde:fghijklmnopqrstuvwxyz1ABCDEFGHIJKL:MNOP:QRSTUVWXYZ"
 #define	PROCCHUNK	50	/* process-entries for future expansion  */
 #define	MAXFL		64      /* maximum number of command-line flags  */
@@ -632,7 +638,13 @@ main(int argc, char *argv[])
 	** (remaining) resource-usage by processes which have finished
 	*/
 	acctswon();
-
+#ifdef FREEBSD
+	/* 
+	** The functions kvm_open()  return a descriptor used to
+	**  access kernel virtual memory via the kvm(3) library routines
+	*/
+	kd = kvm_open(NULL, _PATH_DEVNULL, NULL, O_RDONLY, "kvm_open");
+#endif
 	/*
 	** determine properties (like speed) of all interfaces
 	*/

@@ -274,7 +274,9 @@ static const char rcsid[] = "$Id: showlinux.c,v 1.70 2010/10/23 14:04:12 gerlof 
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <termio.h>
+#ifdef linux
+ #include <termio.h>
+#endif
 #include <unistd.h>
 #include <stdarg.h>
 #include <curses.h>

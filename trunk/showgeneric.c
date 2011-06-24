@@ -268,7 +268,9 @@ static const char rcsid[] = "$Id: showgeneric.c,v 1.71 2010/10/25 19:08:32 gerlo
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-#include <termio.h>
+#ifdef linux
+ #include <termio.h>
+#endif
 #include <unistd.h>
 #include <stdarg.h>
 #include <curses.h>

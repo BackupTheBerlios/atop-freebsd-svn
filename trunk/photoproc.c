@@ -146,6 +146,13 @@ static const char rcsid[] = "$Id: photoproc.c,v 1.33 2010/04/23 12:19:35 gerlof 
 #include <unistd.h>
 #include <ctype.h>
 
+#ifdef FREEBSD 
+ #include <kvm.h>
+ #include <sys/sysctl.h>
+ #include <sys/user.h>
+ extern  kvm_t *kd;
+#endif
+
 #include "atop.h"
 #include "photoproc.h"
 
@@ -160,12 +167,13 @@ static const char rcsid[] = "$Id: photoproc.c,v 1.33 2010/04/23 12:19:35 gerlof 
 /* ATOP-extension line of /proc/pid/stat */
 #define ATOPSTAT	"%lld %llu %lld %llu %lld %llu %lld %llu "	\
 			"%lld %llu %lld %llu %lld %lld"
-
+#ifdef linux  /* using /proc/ to get all information */
 static int	fillproc(struct pstat *);
 
 int
 photoproc(struct pstat *proclist, int maxproc)
 {
+
 	static int	firstcall = 1;
 
 	register struct pstat	*curproc;
@@ -578,14 +586,194 @@ fillproc(struct pstat *curproc)
 	}
 
 	return nthreads;
+	
+}
+#elif defined(FREEBSD)  /* we are using kvm to get all the information */
+static int	fillproc(struct pstat *, struct kinfo_proc *pp);
+
+int
+photoproc(struct pstat *proclist, int maxproc)
+{
+	static int	firstcall = 1;
+
+	register struct pstat	*curproc, *prev_curproc = NULL, *temp_proc = NULL;
+
+	int		i, pval=0;
+
+	/*
+	** one-time initialization stuff
+	*/
+	if (firstcall)
+	{
+		supportflags |= IOSTAT; /* we have block count number per process in the kvm stat */
+		firstcall = 0;
+	}
+	
+	struct kinfo_proc *pbase;
+	static char     string[CMDLEN];
+	char          **argv;
+	int nproc, prev_pid;
+	pbase = kvm_getprocs(kd, KERN_PROC_ALL, 0, &nproc);
+	prev_pid = 0;
+	for (i = nproc; --i >= 0; ++pbase) {
+	    if(pbase->ki_pid)  {
+		/* FIXME we are filtering kernel processes. Needs to be user-defined */
+		if ((pbase->ki_flag & P_SYSTEM ) || (pbase->ki_flag & P_KTHREAD)) 
+		    continue;
+		
+		curproc = proclist+pval ;
+	
+		if(prev_pid==pbase->ki_pid && prev_curproc)	/*
+								** process thread. Use previous process to fill thread data 
+								*/
+		    temp_proc=prev_curproc;
+		else 
+		    temp_proc=curproc;
+		/* count threads */
+		switch (pbase->ki_stat) {
+	    		case SRUN:
+	    		    temp_proc->gen.nthrrun++;
+		    	    break;
+			case SSLEEP:
+			case SIDL:
+			case SSTOP:
+			case SLOCK:
+				temp_proc->gen.nthrslpi++;
+				break;
+			case SWAIT:
+			temp_proc->gen.nthrslpu++;
+				break;
+			default: 
+		    	temp_proc->gen.nthrrun++;
+		    }
+		    
+		if (prev_pid==pbase->ki_pid)  /* thread detected, no need to add to the process table */
+		    continue;
+		fillproc(curproc, pbase);
+		prev_pid=pbase->ki_pid;
+		prev_curproc=curproc;
+		string[0] = 0;
+		argv = kvm_getargv(kd, pbase, sizeof(string));
+		while (argv && *argv) {
+		    if (string[0] != 0)
+		    strcat(string, " ");
+		    strcat(string, *argv);
+		    argv++;
+		}
+		memset(curproc->gen.cmdline, 0, CMDLEN+1);
+		strncpy(curproc->gen.cmdline, string, CMDLEN); 
+		pval++;
+	    }
+	}
+	return pval;
 }
 
+static int
+fillproc(struct pstat *curproc, struct kinfo_proc *pp)
+{
+	curproc->gen.pid      = pp->ki_pid;
+	curproc->gen.ppid     = pp->ki_ppid;
+	curproc->gen.ruid     = pp->ki_ruid;
+	curproc->gen.euid     = pp->ki_uid;;
+	curproc->gen.suid     = pp->ki_svuid;;
+	curproc->gen.fsuid    = 0; /* we don`t have it on BSD? */
+	curproc->gen.rgid     = pp->ki_rgid;
+	curproc->gen.egid     = pp->ki_pgid;
+	curproc->gen.sgid     = pp->ki_svgid;
+	curproc->gen.fsgid    = 0; /* we don`t have it on BSD? */
+	curproc->gen.nthr     = pp->ki_numthreads;
+	/*
+	 *   generate "STATE" field, emulating linux
+	 *   - see http://linux.die.net/man/5/proc
+	 */
+	curproc->gen.state = ' ';
+	switch (pp->ki_stat) {
+	case SRUN:
+		curproc->gen.state = 'R';
+		break;
+	case SLOCK: /* Blocked on a lock. */
+		curproc->gen.state = 'L';
+		break;
+	case SSLEEP:
+		curproc->gen.state = 'S';
+		break;
+	case SIDL: /* Process being created by fork. */ 
+		curproc->gen.state = 'I';
+		break;
+	case SSTOP: /* Process debugging or suspension. */ 
+		curproc->gen.state = 'T';
+		break;
+	case SZOMB:
+		curproc->gen.state = 'Z';
+		break;
+	case SWAIT:
+		curproc->gen.state = 'D';
+		break;
+	}
+
+	strncpy(curproc->gen.name, pp->ki_comm, strlen(pp->ki_comm));
+	curproc->gen.name[PNAMLEN] = 0;
+
+	curproc->gen.excode   = 0;
+	curproc->gen.btime    = pp->ki_start.tv_sec;
+	curproc->cpu.utime    = pp->ki_rusage.ru_utime.tv_sec * 1000 + pp->ki_rusage.ru_utime.tv_usec / 1000;
+	curproc->cpu.stime    = pp->ki_rusage.ru_stime.tv_sec * 1000 + pp->ki_rusage.ru_stime.tv_usec / 1000;
+	curproc->cpu.nice     = pp->ki_nice;
+	curproc->cpu.prio     = pp->ki_pri.pri_level - PZERO; /* from freebsd top */
+	/* 
+	 * FIXME need to review http://www.unix.com/man-page/all/2/rtprio/ one more time 
+	 Probably we need to change labels in FreeBSD atop as well to make it look more native
+	*/
+	switch (PRI_BASE(pp->ki_pri.pri_class)) {
+	    case PRI_REALTIME:
+	    curproc->cpu.rtprio = ((pp->ki_flag & P_KTHREAD) ? pp->ki_pri.pri_native :
+		        pp->ki_pri.pri_user) - PRI_MIN_REALTIME;
+	    break;
+	    case PRI_IDLE:
+	    curproc->cpu.rtprio = ((pp->ki_flag & P_KTHREAD) ? pp->ki_pri.pri_native :
+		        pp->ki_pri.pri_user) - PRI_MIN_IDLE;
+	    break;
+	    default: 
+		curproc->cpu.rtprio = 0;
+	}
+	curproc->cpu.policy   = pp->ki_pri.pri_class; // it is different value then in Linux
+	curproc->cpu.curcpu   = (int)pp->ki_lastcpu;
+	curproc->cpu.sleepavg = 0; /* FIXME it is possible to calculate it like PS do, do we need this ? */ 
+
+	curproc->mem.minflt   = pp->ki_rusage.ru_minflt;
+	curproc->mem.majflt   = pp->ki_rusage.ru_majflt;
+	curproc->mem.vmem     = pp->ki_size / 1024;
+	curproc->mem.rmem     = pp->ki_rssize * (pagesize/1024);
+	curproc->mem.vgrow    = 0;	/* calculated later */
+	curproc->mem.rgrow    = 0;	/* calculated later */
+	curproc->mem.shtext   = pp->ki_tsize * (pagesize/1024);
+
+	curproc->dsk.rio      = pp->ki_rusage.ru_inblock; /* FIXME Provided data is in blocks, no idea if it is possible to convert it to bytes */
+	curproc->dsk.rsz      = pp->ki_rusage.ru_inblock;
+	curproc->dsk.wio      = pp->ki_rusage.ru_oublock;
+	curproc->dsk.wsz      = pp->ki_rusage.ru_oublock;
+	curproc->dsk.cwsz     = 0;
+	curproc->net.tcpsnd   = 0; /* there is no per-process network information in the FreeBSD  */
+	curproc->net.tcpssz   = 0;
+	curproc->net.tcprcv   = 0;
+	curproc->net.tcprsz   = 0;
+	curproc->net.udpsnd   = 0;
+	curproc->net.udpssz   = 0;
+	curproc->net.udprcv   = 0;
+	curproc->net.udprsz   = 0;
+	curproc->net.rawsnd   = 0;
+	curproc->net.rawrcv   = 0;
+
+	return curproc->gen.nthr;
+}
+#endif /* FREEBSD */
 /*
 ** count number of processes currently running
 */
 unsigned int
 countprocs(void)
 {
+#ifdef linux
 	unsigned int	nr=0;
 	DIR		*dirp;
 	struct dirent	*entp;
@@ -609,4 +797,12 @@ countprocs(void)
 	chdir(origdir);
 
 	return nr;
+#elif defined(FREEBSD)
+	int nproc;
+	/* 
+	** it is probably not very accurate, because includes threads and system processes
+	*/
+	kvm_getprocs(kd, KERN_PROC_ALL, 0, &nproc);
+	return nproc;
+#endif
 }

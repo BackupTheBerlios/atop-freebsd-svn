@@ -23,7 +23,7 @@
 */
 #include "netstats.h"
 
-#define	MAXCPU		64
+#define	MAXCPUS	64
 #define	MAXDSK		256
 #define	MAXLVM		256
 #define	MAXMDD		128
@@ -102,7 +102,7 @@ struct	cpustat {
 	count_t	cfuture[4];	/* reserved for future use	*/
 
 	struct percpu   all;
-	struct percpu   cpu[MAXCPU];
+	struct percpu   cpu[MAXCPUS];
 };
 
 /************************************************************************/
