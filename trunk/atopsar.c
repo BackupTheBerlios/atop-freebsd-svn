@@ -2162,7 +2162,7 @@ topdline(struct sstat *ss, struct pstat *ps, int nproc,
 	/*
 	** determine total disk accesses for all processes
 	*/
-	for (i=0, availdsk=0; i < nproc; i++)
+	for (i=0, availdsk=0; i < ppres; i++)
 	{
 		availdsk += (ps+i)->dsk.rio + (ps+i)->dsk.wio;
 	}
