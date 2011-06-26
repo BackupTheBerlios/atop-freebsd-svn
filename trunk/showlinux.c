@@ -1799,10 +1799,12 @@ pridisklike(extraparam *ep, struct perdsk *dp, char *lp, char *highorderp,
         {
                 ep->iotot =  ep->perdsk[ep->index].nread +
 		             ep->perdsk[ep->index].nwrite;
-
+#ifdef linux
                 busy        = (double)(ep->perdsk[ep->index].io_ms *
 						100.0 / ep->mstot);
-
+#elif defined(FREEBSD)
+                busy        = (double)ep->perdsk[ep->index].busy_pct;
+#endif
                 if (dskbadness)
                         badness = busy * 100 / dskbadness;
                 else

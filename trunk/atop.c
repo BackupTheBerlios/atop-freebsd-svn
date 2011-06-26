@@ -300,7 +300,9 @@ static const char rcsid[] = "$Id: atop.c,v 1.49 2010/10/23 14:01:00 gerlof Exp $
 
 #ifdef FREEBSD // FreeBSD using kvm to manage processes
  #include <kvm.h>
+ #include <devstat.h>
  #include <paths.h>
+ #include <err.h>
  kvm_t *kd;
 #endif
 
@@ -644,6 +646,13 @@ main(int argc, char *argv[])
 	**  access kernel virtual memory via the kvm(3) library routines
 	*/
 	kd = kvm_open(NULL, _PATH_DEVNULL, NULL, O_RDONLY, "kvm_open");
+	/*
+	 * Make sure that the userland devstat version matches the kernel
+	 * devstat version.  If not, exit and print a message informing
+	 * the user of his mistake.
+	 */
+	if (devstat_checkversion(NULL) < 0)
+		errx(1, "%s", devstat_errbuf);
 #endif
 	/*
 	** determine properties (like speed) of all interfaces

@@ -114,6 +114,7 @@ struct	perdsk {
         count_t	nwrite;	/* number of write transfers            */
         count_t	nwsect;	/* number of sectors written            */
         count_t	io_ms;	/* number of millisecs spent for I/O    */
+        float	busy_pct;	/* absolute %of busy time  */
         count_t	avque;	/* average queue length                 */
 	count_t	cfuture[4];	/* reserved for future use	*/
 };

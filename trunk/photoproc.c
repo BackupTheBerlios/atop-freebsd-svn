@@ -798,11 +798,21 @@ countprocs(void)
 
 	return nr;
 #elif defined(FREEBSD)
-	int nproc;
+	int nproc = 0, nproc_all = 0, i = 0;
+	struct kinfo_proc *pbase;
 	/* 
 	** it is probably not very accurate, because includes threads and system processes
 	*/
-	kvm_getprocs(kd, KERN_PROC_ALL, 0, &nproc);
+	pbase = kvm_getprocs(kd, KERN_PROC_ALL, 0, &nproc_all);
+	for (i = nproc_all; --i >= 0; ++pbase) {
+	    if(pbase->ki_pid)  {
+		/* FIXME we are filtering kernel processes. Needs to be user-defined */
+		if ((pbase->ki_flag & P_SYSTEM ) || (pbase->ki_flag & P_KTHREAD)) 
+		    continue;
+		nproc++;
+	    }
+	}
+
 	return nproc;
 #endif
 }

@@ -1059,8 +1059,14 @@ sysprt_DSKBUSY(void *p, void *q)
         extraparam	*as=q;
         static char 	buf[16]="busy  ";
 
+#ifdef linux
         sprintf(buf+5,"%6.0lf%%", 
-                   (as->perdsk[as->index].io_ms * 100.0 / as->mstot));
+                   (as->perdsk[as->index].io_ms * 100.0 / as->mstot)); 
+#elif defined(FREEBSD)
+/* we already have normalized value */
+        sprintf(buf+5,"%6.0lf%%", 
+                   (double)as->perdsk[as->index].busy_pct); 
+#endif
         return buf;
 }
 
@@ -1160,9 +1166,12 @@ sysprt_DSKAVQUEUE(void *p, void *q)
         extraparam	*as=q;
         static char	buf[16]="avq  ";
 	struct perdsk 	*dp = &(as->perdsk[as->index]);
-
+#ifdef linux
 	sprintf(buf+4, "%8.2f", dp->io_ms  ?
                                 (double)dp->avque / dp->io_ms : 0.0);
+#elif defined(FREEBSD)
+	sprintf(buf+4, "%8.2f", (double)dp->avque);
+#endif
         return buf;
 }
 
@@ -1174,9 +1183,12 @@ sysprt_DSKAVIO(void *p, void *q)
 {
         extraparam	*as=q;
         static char	buf[16]="avio  ";
+#ifdef linux
         double 		tim= as->iotot ? 
                      	 (double)(as->perdsk[as->index].io_ms) / as->iotot : 0;
-
+#elif defined(FREEBSD)
+	double	tim = (double)as->perdsk[as->index].io_ms / 1000;
+#endif
         if (tim > 100.0)
         {
                 sprintf(buf+5, "%4.0lf ms", tim);

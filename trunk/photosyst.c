@@ -171,6 +171,7 @@ static const char rcsid[] = "$Id: photosyst.c,v 1.37 2010/11/14 06:42:18 gerlof 
 
 #define	MAXCNT	64
 
+#ifdef linux
 /* return value of isdisk() */
 #define	NONTYPE	0
 #define	DSKTYPE	1
@@ -179,7 +180,7 @@ static const char rcsid[] = "$Id: photosyst.c,v 1.37 2010/11/14 06:42:18 gerlof 
 
 static int	isdisk(unsigned int, unsigned int,
 			char *, struct perdsk *, int);
-
+#endif
 static struct ipv6_stats	ipv6_tmp;
 static struct icmpv6_stats	icmpv6_tmp;
 static struct udpv6_stats	udpv6_tmp;
@@ -264,8 +265,11 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 #define GETSYSCTL(name, var) getsysctl(name, &(var), sizeof(var))
 #include <sys/user.h>
 #include <kvm.h>
+#include <devstat.h>
+#include <err.h>
 
 extern  kvm_t *kd;
+struct device_selection *dev_select;
 #endif
 
 #ifdef linux
@@ -1163,6 +1167,159 @@ photosyst(struct sstat *si)
 	if(pswapout)
 	    si->mem.swouts = pswapout;
 	
+	int num_devices = 0, num_selected, num_selections;
+	static char firstcall = 1;
+	static struct statinfo cur_statinfo, last_statinfo;
+	long generation;
+	long select_generation;
+	char **specified_devices = NULL;
+	struct devstat_match *matches = NULL;
+	
+	/* fetchig disk statistic using devstat data */
+	if ((num_devices = devstat_getnumdevs(NULL)) > 0) { 
+	    /* we found active devices */
+	    if(firstcall) { /* initialize */
+		firstcall = 0;
+	        cur_statinfo.dinfo = (struct devinfo *)calloc(1, sizeof(struct devinfo));
+		if (cur_statinfo.dinfo == NULL)
+		    err(1, "calloc failed");
+		last_statinfo.dinfo = (struct devinfo *)calloc(1, sizeof(struct devinfo));
+		if (last_statinfo.dinfo == NULL)
+		    err(1, "calloc failed");
+		/*
+		 * Grab all the devices.  We don't look to see if the list has
+		* changed here, since it almost certainly has.  We only look for
+		* errors.
+		 */
+		if (devstat_getdevs(NULL, &cur_statinfo) == -1)
+		    errx(1, "%s", devstat_errbuf);
+		num_devices = cur_statinfo.dinfo->numdevs;
+		generation = cur_statinfo.dinfo->generation;
+		dev_select = NULL;
+		
+		specified_devices = (char **)malloc(sizeof(char *));
+		/*
+		 * At this point, selectdevs will almost surely indicate that the
+	    	 * device list has changed, so we don't look for return values of 0
+	    	 * or 1.  If we get back -1, though, there is an error.
+		 */
+		if (devstat_selectdevs(&dev_select, &num_selected,
+	           &num_selections, &select_generation, generation,
+	           cur_statinfo.dinfo->devices, num_devices, matches,
+	           0, specified_devices,
+	           0, DS_SELECT_ADD, num_devices,
+	           0) == -1)
+			errx(1, "%s", devstat_errbuf);
+	    } /* firstcall */
+	    
+	    struct devinfo *tmp_dinfo;
+	    long double etime;
+	
+	    tmp_dinfo = last_statinfo.dinfo;
+	    last_statinfo.dinfo = cur_statinfo.dinfo;
+	    cur_statinfo.dinfo = tmp_dinfo;
+	    last_statinfo.snap_time = cur_statinfo.snap_time;
+	    
+	    /*
+	     * Here what we want to do is refresh our device stats.
+	     * devstat_getdevs() returns 1 when the device list has changed.
+	     * If the device list has changed, we want to go through
+	     * the selection process again, in case a device that we
+	     * were previously displaying has gone away.
+	     */
+	    switch (devstat_getdevs(NULL, &cur_statinfo)) {
+	    case -1:
+	    	errx(1, "%s", devstat_errbuf);
+	    	break;
+	    case 1: {
+	    	int retval;
+		num_devices = cur_statinfo.dinfo->numdevs;
+    		generation = cur_statinfo.dinfo->generation;
+		retval = devstat_selectdevs(&dev_select, &num_selected,
+				    &num_selections,
+				    &select_generation,
+				    generation,
+				    cur_statinfo.dinfo->devices,
+				    num_devices, matches,
+				    0,
+				    specified_devices,
+				    0,
+				    DS_SELECT_ADD, num_devices,
+				    0);
+		switch(retval) {
+		    case -1:
+	        	errx(1, "%s", devstat_errbuf);
+			break;
+		    default:
+			break;
+		}
+			break;
+		}
+	default:
+	break;
+	}
+	etime = cur_statinfo.snap_time - last_statinfo.snap_time;
+	if (etime == 0.0)
+		etime = 1.0;
+
+	int dn;
+
+	static int havelast = 0;
+	for (dn = 0; dn < num_devices; dn++) {
+	    if (dn >= MAXDSK-1)
+		break;
+	    int di;
+	    u_int64_t total_bytes_read, total_transfers_read;
+	    u_int64_t total_bytes_write, total_transfers_write;
+	    long double busy_pct;
+	    u_int64_t queue_len;
+	    long double ms_per_transaction;
+
+	    di = dev_select[dn].position;
+	    
+	    /* call first time to get calculated values for last period */
+	    if (devstat_compute_statistics(&cur_statinfo.dinfo->devices[di],
+	        havelast ? &last_statinfo.dinfo->devices[di] : NULL, etime,
+	        DSM_TOTAL_BYTES_READ, &total_bytes_read,
+	        DSM_TOTAL_BYTES_WRITE, &total_bytes_write,
+	        DSM_TOTAL_TRANSFERS_READ, &total_transfers_read,
+	        DSM_TOTAL_TRANSFERS_WRITE, &total_transfers_write,
+		DSM_MS_PER_TRANSACTION, &ms_per_transaction,
+		DSM_BUSY_PCT, &busy_pct,
+		DSM_QUEUE_LENGTH, &queue_len,
+		DSM_NONE) != 0)
+	    errx(1, "%s", devstat_errbuf);
+	    
+	    /* call second tme to get absolute values */
+	    if (devstat_compute_statistics(&cur_statinfo.dinfo->devices[di],
+	        NULL, etime,
+	        DSM_TOTAL_BYTES_READ, &total_bytes_read,
+	        DSM_TOTAL_BYTES_WRITE, &total_bytes_write,
+	        DSM_TOTAL_TRANSFERS_READ, &total_transfers_read,
+	        DSM_TOTAL_TRANSFERS_WRITE, &total_transfers_write,
+		DSM_NONE) != 0)
+	    errx(1, "%s", devstat_errbuf);
+	    
+	    snprintf(si->dsk.dsk[dn].name,MAXDKNAM-1,"%s%d",
+		cur_statinfo.dinfo->devices[di].device_name,cur_statinfo.dinfo->devices[di].unit_number);
+
+	    si->dsk.dsk[dn].nread=total_transfers_read;
+	    si->dsk.dsk[dn].nwrite=total_transfers_write;
+
+	    si->dsk.dsk[dn].nrsect=total_bytes_read * 2 / 1024;
+	    si->dsk.dsk[dn].nwsect=total_bytes_write * 2 / 1024;
+	    if(havelast) {
+		si->dsk.dsk[dn].busy_pct = (float)busy_pct;
+		si->dsk.dsk[dn].io_ms = ms_per_transaction * 1000;
+		si->dsk.dsk[dn].avque=queue_len; /* it is not the same data as in Linux */
+	    }
+	}
+	dn++;
+	havelast = 1;
+	
+	si->dsk.dsk[dn].name[0] = '\0'; /* set terminator for table */
+	si->dsk.ndsk = dn;
+	}
 
 	/*
 	** fetch application-specific counters
@@ -1175,6 +1332,7 @@ photosyst(struct sstat *si)
 
 #endif
 
+#ifdef linux
 /*
 ** set of subroutines to determine which disks should be monitored
 ** and to translate name strings into (shorter) name strings
@@ -1305,7 +1463,6 @@ lvmmapname(unsigned int major, unsigned int minor,
 	*(px->name+maxlen-1) = 0;
 }
 
-#ifdef linux
 /*
 ** this table is used in the function isdisk()
 **
