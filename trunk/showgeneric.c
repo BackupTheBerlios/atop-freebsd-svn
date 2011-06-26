@@ -1046,8 +1046,13 @@ generic_samp(time_t curtime, int nsecs,
 			   case MPROCNET:
 				if ( !(supportflags & PATCHSTAT) )
 				{
+#ifdef linux
 					statmsg = "No kernel-patch installed; "
 					          "request ignored!";
+#elif defined(FREEBSD)
+					statmsg = "FreeBSD have no support for per-process network stat ; "
+					          "request ignored!";
+#endif
 					break;
 				}
 
