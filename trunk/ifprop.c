@@ -99,6 +99,7 @@ static int link_speed(int active) {
     case IFM_1000_T:
         return (1000);
     case IFM_HPNA_1:
+    case 0: /* unknown speed */
         return (0);
     default:
         /* assume that new defined types are going to be at least 10GigE */
