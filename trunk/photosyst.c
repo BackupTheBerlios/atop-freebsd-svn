@@ -270,6 +270,7 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 
 extern  kvm_t *kd;
 struct device_selection *dev_select;
+struct statinfo cur_statinfo, last_statinfo;
 #endif
 
 #ifdef linux
@@ -1169,7 +1170,7 @@ photosyst(struct sstat *si)
 	
 	int num_devices = 0, num_selected, num_selections;
 	static char firstcall = 1;
-	static struct statinfo cur_statinfo, last_statinfo;
+	
 	long generation;
 	long select_generation;
 	char **specified_devices = NULL;
@@ -1184,6 +1185,7 @@ photosyst(struct sstat *si)
 		if (cur_statinfo.dinfo == NULL)
 		    err(1, "calloc failed");
 		last_statinfo.dinfo = (struct devinfo *)calloc(1, sizeof(struct devinfo));
+			
 		if (last_statinfo.dinfo == NULL)
 		    err(1, "calloc failed");
 		/*
