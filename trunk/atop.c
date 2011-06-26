@@ -327,6 +327,7 @@ char		rawreadflag;
 unsigned int	begintime, endtime;
 char		flaglist[MAXFL];
 char		deviatonly  = 1;
+char		filterkernel = 1;
 unsigned short	hertz;
 unsigned int	pagesize;
 int 		osrel;
@@ -518,6 +519,10 @@ main(int argc, char *argv[])
 
                            case 'a':		/* all processes per sample ? */
 				deviatonly=0;
+				break;
+
+                           case 'U':		/* Show kernel "processes" */
+				filterkernel=0;
 				break;
 
                            case 'b':		/* begin time ?               */
@@ -909,6 +914,9 @@ prusage(char *myname)
 	printf("\t  -P  generate parseable output for specified label(s)\n");
 	printf("\t  -L  alternate line length (default 80) in case of "
 			"non-screen output\n");
+#ifdef FREEBSD
+	printf("\t  -U  Show FreeBSD kernel processes (filtered by default)\n");
+#endif
 
 	(*vis.show_usage)();
 

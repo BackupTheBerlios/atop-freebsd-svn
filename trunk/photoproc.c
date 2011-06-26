@@ -151,6 +151,7 @@ static const char rcsid[] = "$Id: photoproc.c,v 1.33 2010/04/23 12:19:35 gerlof 
  #include <sys/sysctl.h>
  #include <sys/user.h>
  extern  kvm_t *kd;
+ extern char	filterkernel;
 #endif
 
 #include "atop.h"
@@ -617,8 +618,7 @@ photoproc(struct pstat *proclist, int maxproc)
 	prev_pid = 0;
 	for (i = nproc; --i >= 0; ++pbase) {
 	    if(pbase->ki_pid)  {
-		/* FIXME we are filtering kernel processes. Needs to be user-defined */
-		if ((pbase->ki_flag & P_SYSTEM ) || (pbase->ki_flag & P_KTHREAD)) 
+		if (filterkernel && ((pbase->ki_flag & P_SYSTEM ) || (pbase->ki_flag & P_KTHREAD)))
 		    continue;
 		
 		curproc = proclist+pval ;
@@ -710,8 +710,11 @@ fillproc(struct pstat *curproc, struct kinfo_proc *pp)
 		curproc->gen.state = 'D';
 		break;
 	}
-
-	strncpy(curproc->gen.name, pp->ki_comm, strlen(pp->ki_comm));
+	if ((pp->ki_flag & P_SYSTEM ) || (pp->ki_flag & P_KTHREAD))
+	    /* kernel process, show with {name} */
+	    snprintf(curproc->gen.name,PNAMLEN-1, "{%s}", pp->ki_comm);
+	else
+	    strncpy(curproc->gen.name, pp->ki_comm, PNAMLEN-1);
 	curproc->gen.name[PNAMLEN] = 0;
 
 	curproc->gen.excode   = 0;
@@ -806,8 +809,7 @@ countprocs(void)
 	pbase = kvm_getprocs(kd, KERN_PROC_ALL, 0, &nproc_all);
 	for (i = nproc_all; --i >= 0; ++pbase) {
 	    if(pbase->ki_pid)  {
-		/* FIXME we are filtering kernel processes. Needs to be user-defined */
-		if ((pbase->ki_flag & P_SYSTEM ) || (pbase->ki_flag & P_KTHREAD)) 
+		if (filterkernel && ((pbase->ki_flag & P_SYSTEM ) || (pbase->ki_flag & P_KTHREAD))) 
 		    continue;
 		nproc++;
 	    }
