@@ -259,6 +259,7 @@ static struct v6tab 		v6tab[] = {
 static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 
 #ifdef FREEBSD
+#include <sys/socketvar.h>
 #include <sys/param.h>
 #include <sys/sysctl.h> 
 #include <sys/errno.h> 
@@ -268,6 +269,19 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 #include <sys/time.h>
 #include <net/if.h>
 #include <net/if_mib.h>
+#include <netinet/ip.h>
+#include <netinet/ip_var.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/icmp_var.h>
+#include <netinet/udp.h>
+#include <netinet/udp_var.h>
+
+#include <netinet/in_pcb.h>
+#include <netinet/tcp.h>
+#include <netinet/tcp_var.h>
+#include <netinet/tcp_timer.h>
+#include <netinet/tcp_fsm.h>
+
 #define GETSYSCTL(name, var) getsysctl(name, &(var), sizeof(var))
 #include <sys/user.h>
 #include <kvm.h>
@@ -1369,6 +1383,147 @@ photosyst(struct sstat *si)
 	}
 	si->intf.intf[curint].name[0] = '\0'; // set terminator for table 
 	si->intf.nrintf = curint;
+	
+	/* ipv4 statistic */
+	struct ipstat ipstat;
+	len = sizeof ipstat;
+	int def_ttl = 0;
+	int ip_forwarding = 0;
+	
+
+        if (!sysctlbyname("net.inet.ip.stats", &ipstat, &len, 0, 0)) {
+	    GETSYSCTL("net.inet.ip.forwarding", ip_forwarding);
+	    si->net.ipv4.Forwarding = ip_forwarding;
+	    GETSYSCTL("net.inet.ip.ttl", def_ttl);
+	    si->net.ipv4.DefaultTTL = def_ttl;
+	    si->net.ipv4.InReceives = ipstat.ips_total;
+	    si->net.ipv4.InHdrErrors =  ipstat.ips_badsum + ipstat.ips_tooshort
+					+ ipstat.ips_toosmall + ipstat.ips_badhlen
+					+ ipstat.ips_badlen;
+	    si->net.ipv4.InAddrErrors = ipstat.ips_cantforward;
+	    si->net.ipv4.ForwDatagrams = ipstat.ips_forward;
+	    si->net.ipv4.InUnknownProtos = ipstat.ips_noproto;
+	    si->net.ipv4.InDiscards = ipstat.ips_cantforward; /* ?? */
+	    si->net.ipv4.InDelivers = ipstat.ips_delivered;
+	    si->net.ipv4.OutRequests = ipstat.ips_localout; 
+	    si->net.ipv4.OutDiscards = ipstat. ips_odropped;
+	    si->net.ipv4.OutNoRoutes = ipstat.ips_noroute;
+	    si->net.ipv4.ReasmTimeout = ipstat.ips_fragtimeout;
+	    si->net.ipv4.ReasmOKs  = ipstat.ips_reassembled;
+	    si->net.ipv4.ReasmFails = ipstat.ips_fragdropped + ipstat.ips_fragtimeout;
+	    si->net.ipv4.FragOKs = ipstat.ips_fragments
+				    - (ipstat.ips_fragdropped + ipstat.ips_fragtimeout);
+	    si->net.ipv4.FragFails = ipstat.ips_cantfrag;
+	    si->net.ipv4.FragCreates = ipstat.ips_ofragments;
+        }
+        
+        struct icmpstat icmpstat;
+	len = sizeof icmpstat;
+	/* ICMPv4 stat */
+        if (!sysctlbyname("net.inet.icmp.stats", &icmpstat, &len, 0, 0)) {
+	    si->net.icmpv4.InMsgs = icmpstat.icps_badcode + icmpstat.icps_tooshort + 
+		icmpstat.icps_checksum + icmpstat.icps_badlen;
+	    for (i=0; i <= ICMP_MAXTYPE; i++) 
+		si->net.icmpv4.InMsgs += icmpstat.icps_inhist[i];
+	    si->net.icmpv4.InErrors = icmpstat.icps_badcode + icmpstat.icps_tooshort +
+		icmpstat.icps_checksum + icmpstat.icps_badlen;
+	
+	    si->net.icmpv4.InDestUnreachs = icmpstat.icps_inhist[ICMP_UNREACH];
+	    si->net.icmpv4.InTimeExcds = icmpstat.icps_inhist[ICMP_TIMXCEED];
+	    si->net.icmpv4.InParmProbs = icmpstat.icps_inhist[ICMP_PARAMPROB];
+	    si->net.icmpv4.InSrcQuenchs = icmpstat.icps_inhist[ICMP_SOURCEQUENCH];
+	    si->net.icmpv4.InRedirects = icmpstat.icps_inhist[ICMP_REDIRECT];
+	    si->net.icmpv4.InEchos = icmpstat.icps_inhist[ICMP_ECHO];
+	    si->net.icmpv4.InEchoReps = icmpstat.icps_inhist[ICMP_ECHOREPLY];
+	    si->net.icmpv4.InTimestamps = icmpstat.icps_inhist[ICMP_TSTAMP];
+	    si->net.icmpv4.InTimestampReps = icmpstat.icps_inhist[ICMP_TSTAMPREPLY];
+	    si->net.icmpv4.InAddrMasks = icmpstat.icps_inhist[ICMP_MASKREQ];
+	    si->net.icmpv4.InAddrMaskReps = icmpstat.icps_inhist[ICMP_MASKREPLY];
+	
+	    si->net.icmpv4.OutMsgs = icmpstat.icps_oldshort + icmpstat.icps_oldicmp;
+	    for (i=0; i <= ICMP_MAXTYPE; i++)
+		si->net.icmpv4.OutMsgs += icmpstat.icps_outhist[i];
+	
+	    si->net.icmpv4.OutErrors = icmpstat.icps_oldshort + icmpstat.icps_oldicmp;
+	    si->net.icmpv4.OutDestUnreachs = icmpstat.icps_outhist[ICMP_UNREACH];
+	    si->net.icmpv4.OutTimeExcds = icmpstat.icps_outhist[ICMP_TIMXCEED];
+	    si->net.icmpv4.OutParmProbs = icmpstat.icps_outhist[ICMP_PARAMPROB];
+	    si->net.icmpv4.OutSrcQuenchs = icmpstat.icps_outhist[ICMP_SOURCEQUENCH];
+	    si->net.icmpv4.OutRedirects = icmpstat.icps_outhist[ICMP_REDIRECT];
+	    si->net.icmpv4.OutEchos = icmpstat.icps_outhist[ICMP_ECHO];
+	    si->net.icmpv4.OutEchoReps = icmpstat.icps_outhist[ICMP_ECHOREPLY];
+	    si->net.icmpv4.OutTimestamps = icmpstat.icps_outhist[ICMP_TSTAMP];
+	    si->net.icmpv4.OutTimestampReps = icmpstat.icps_outhist[ICMP_TSTAMPREPLY];
+	    si->net.icmpv4.OutAddrMasks = icmpstat.icps_outhist[ICMP_MASKREQ];
+	    si->net.icmpv4.OutAddrMaskReps = icmpstat.icps_outhist[ICMP_MASKREPLY];
+        }
+
+        struct udpstat udpstat;
+	len = sizeof udpstat;
+	/* UDPv4 stat */
+        if (!sysctlbyname("net.inet.udp.stats", &udpstat, &len, 0, 0)) {
+	    si->net.udpv4.InDatagrams = udpstat.udps_ipackets;
+	    si->net.udpv4.NoPorts = udpstat.udps_noport;
+	    si->net.udpv4.InErrors = udpstat.udps_hdrops + udpstat.udps_badsum + udpstat.udps_badlen;
+	    si->net.udpv4.OutDatagrams = udpstat.udps_opackets;
+        }
+
+
+        struct tcpstat tcpstat;
+	len = sizeof tcpstat;
+	unsigned int tcp_total, tcp_count;
+	struct xinpgen *xinpgen;
+	struct xtcpcb *tp;
+	struct xinpgen *ptr;
+	/* UDPv4 stat */
+	
+        if (!sysctlbyname("net.inet.tcp.stats", &tcpstat, &len, 0, 0)) {
+	    si->net.tcp.RtoAlgorithm = 4; /* Assume Van Jacobsen's algorithm */
+	    // si->net.tcp.RtoMin; not in use
+	    // si->net.tcp.RtoMax; not in use
+	    si->net.tcp.MaxConn = 0;
+	    si->net.tcp.ActiveOpens = tcpstat.tcps_connattempt;
+	    si->net.tcp.PassiveOpens = tcpstat.tcps_accepts;
+	    si->net.tcp.AttemptFails = tcpstat.tcps_conndrops;
+	    si->net.tcp.EstabResets = tcpstat.tcps_drops;
+	    si->net.tcp.InSegs = tcpstat.tcps_rcvtotal;
+	    si->net.tcp.OutSegs = tcpstat.tcps_sndtotal - tcpstat.tcps_sndrexmitpack;
+	    si->net.tcp.RetransSegs = tcpstat.tcps_sndrexmitpack;
+	    si->net.tcp.InErrs = tcpstat.tcps_rcvbadsum + tcpstat.tcps_rcvbadoff 
+				+ tcpstat.tcps_rcvmemdrop + tcpstat.tcps_rcvshort;
+	    si->net.tcp.OutRsts = tcpstat.tcps_sndctrl - tcpstat.tcps_closed;
+	    si->net.tcp.CurrEstab = 0;
+	    tcp_count = 0;
+	    tcp_total = 0;
+	    len=0;
+	    if(sysctlbyname("net.inet.tcp.pcblist", NULL, &len, NULL, 0)){
+		errx(1, "%s" ,"net.inet.tcp.pcblist failed");
+	    }
+	    // printf("l=%d\n",len);exit(0);
+	    xinpgen = malloc(len);
+	    if (xinpgen == NULL)
+	    {
+	       errx (1, "net.inet.tcp.pcblist: malloc failed.");
+	    }
+	    /* calculate number of established connection */
+	    if (sysctlbyname("net.inet.tcp.pcblist", xinpgen, &len, NULL, 0) == 0) {
+		for (ptr = (struct xinpgen *)(void *)((char *)xinpgen + xinpgen->xig_len);
+		    ptr->xig_len > sizeof(struct xinpgen);
+		    ptr = (struct xinpgen *)(void *)((char *)ptr + ptr->xig_len)) {
+			tp = (struct xtcpcb *)ptr;
+			if (tp->xt_inp.inp_gencnt > xinpgen->xig_gen ||
+			    (tp->xt_inp.inp_vflag & INP_IPV4) == 0)
+		    continue;
+
+		tcp_total++;
+		if (tp->xt_tp.t_state == TCPS_ESTABLISHED ||
+		    tp->xt_tp.t_state == TCPS_CLOSE_WAIT)
+			tcp_count++;
+		}
+		si->net.tcp.CurrEstab = tcp_count;
+	    }
+	    free(xinpgen);
+        }
 	
 	/*
 	** fetch application-specific counters
