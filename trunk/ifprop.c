@@ -56,9 +56,10 @@
  #include <net/if.h>
  #include <netinet/in.h>
  #include <net/if_media.h>
+ #include <net/if_mib.h>
  #include <sys/types.h>
- #include <ifaddrs.h>
-
+ #include <sys/types.h>
+ #include <sys/sysctl.h>
  #define __u16 uint16_t
  #define __u8 uint8_t
  #define __u32 uint32_t
@@ -240,34 +241,47 @@ initifprop(void)
 	** On FREEBSD we are using getifaddrs to get interface list and 
 	** SIOCGIFMEDIA ioctl for the media information
 	**/
-	struct ifaddrs *ifap, *ifa;
 	struct ifmediareq ifmr;
-	if (getifaddrs(&ifap) != 0)
-	    return;
 	int i = 0, sockfd = 0;
+	int ifcount = 0, curint = 0;
+	size_t len = 4;
+	struct ifmibdata ifmd;
     
 	if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 	{
 		return;
 	}
-
-	for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
-	    if (ifa->ifa_flags & IFF_UP && (ifa->ifa_addr->sa_family == AF_INET)) { // int is up
-		strncpy(ifprops[i].name,ifa->ifa_name,sizeof(ifprops[i].name));
+	if (sysctlbyname("net.link.generic.system.ifcount", &ifcount,
+	    &len, NULL, 0) == -1) {
+	    return;
+	}
+	int name[6];
+	for (i = 1; i <= ifcount; i++){
+	    name[0] = CTL_NET;
+	    name[1] = PF_LINK;
+	    name[2] = NETLINK_GENERIC;
+	    name[3] = IFMIB_IFDATA;
+	    name[4] = i;
+	    name[5] = IFDATA_GENERAL;
+	    len = sizeof(ifmd);
+	    if(sysctl(name, 6, &ifmd, &len, (void *)0, 0)==0){
+		if(!(ifmd.ifmd_flags & IFF_UP)) 
+		    continue; /* interface is down, ignore */
+		strncpy(ifprops[curint].name, ifmd.ifmd_name, sizeof((struct perintf *)NULL)->name - 1);
 		bzero(&ifmr, sizeof(ifmr));
-		strlcpy(ifmr.ifm_name, ifa->ifa_name, IFNAMSIZ);
+		strlcpy(ifmr.ifm_name, ifmd.ifmd_name, IFNAMSIZ);
 		if (!ioctl(sockfd, SIOCGIFMEDIA, (caddr_t) &ifmr)) {
-		    ifprops[i].speed=link_speed(ifmr.ifm_active);
+		    ifprops[curint].speed=link_speed(ifmr.ifm_active);
 		    if(ifmr.ifm_active & IFM_FDX) 
-			ifprops[i].fullduplex	= 1;
+			ifprops[curint].fullduplex	= 1;
 		    else 
-			ifprops[i].fullduplex	= 0;
+			ifprops[curint].fullduplex	= 0;
 		}
-		if (++i >= MAXINTF-1)
-			break;
+		if (++curint >= MAXINTF-1)
+		    break;
+
 	    }
 	}
-	freeifaddrs(ifap);
 	close(sockfd);
 
 #endif /* FREEBSD */

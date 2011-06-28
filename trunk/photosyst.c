@@ -262,6 +262,12 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 #include <sys/param.h>
 #include <sys/sysctl.h> 
 #include <sys/errno.h> 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#include <sys/time.h>
+#include <net/if.h>
+#include <net/if_mib.h>
 #define GETSYSCTL(name, var) getsysctl(name, &(var), sizeof(var))
 #include <sys/user.h>
 #include <kvm.h>
@@ -1328,7 +1334,42 @@ photosyst(struct sstat *si)
 	si->dsk.dsk[dn].name[0] = '\0'; /* set terminator for table */
 	si->dsk.ndsk = dn;
 	}
-
+	
+	int ifcount = 0, curint = 0;
+	size_t len;
+	struct ifmibdata ifmd;
+	
+	
+	GETSYSCTL("net.link.generic.system.ifcount", ifcount);
+	int name[6];
+	for (i = 1; i <= ifcount; i++){
+	    name[0] = CTL_NET;
+	    name[1] = PF_LINK;
+	    name[2] = NETLINK_GENERIC;
+	    name[3] = IFMIB_IFDATA;
+	    name[4] = i;
+	    name[5] = IFDATA_GENERAL;
+	    len = sizeof(ifmd);
+	    if(sysctl(name, 6, &ifmd, &len, (void *)0, 0)==0){
+		if(!(ifmd.ifmd_flags & IFF_UP)) 
+		    continue; /* interface is down, ignore */
+		strncpy(si->intf.intf[curint].name, ifmd.ifmd_name, sizeof((struct perintf *)NULL)->name - 1);
+		si->intf.intf[curint].rbyte=ifmd.ifmd_data.ifi_ibytes;
+		si->intf.intf[curint].sbyte=ifmd.ifmd_data.ifi_obytes;
+		si->intf.intf[curint].rpack=ifmd.ifmd_data.ifi_ipackets;
+		si->intf.intf[curint].spack=ifmd.ifmd_data.ifi_opackets;
+		si->intf.intf[curint].rerrs=ifmd.ifmd_data.ifi_ierrors;
+		si->intf.intf[curint].serrs=ifmd.ifmd_data.ifi_oerrors;
+		si->intf.intf[curint].scollis=ifmd.ifmd_data.ifi_oerrors;
+		si->intf.intf[curint].rdrop=ifmd.ifmd_data.ifi_collisions;
+		si->intf.intf[curint].rmultic=ifmd.ifmd_data.ifi_imcasts;
+		if (++curint >= MAXINTF-1)
+		    break;
+	    }
+	}
+	si->intf.intf[curint].name[0] = '\0'; // set terminator for table 
+	si->intf.nrintf = curint;
+	
 	/*
 	** fetch application-specific counters
 	*/
