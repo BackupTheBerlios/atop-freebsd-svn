@@ -1280,8 +1280,13 @@ taskline(struct sstat *ss, struct pstat *ps, int nproc,
 static void
 memhead(int osvers, int osrel, int ossub)
 {
+#ifdef linux
 	printf("memtotal memfree buffers cached dirty slabmem"
 	       "  swptotal swpfree _mem_"             );
+#elif defined(FREEBSD)
+	printf("memtotal memfree wired   cached inact active "
+	       "  swptotal swpfree _mem_"             );
+#endif
 }
 
 static int

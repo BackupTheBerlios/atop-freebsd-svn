@@ -1103,28 +1103,18 @@ photosyst(struct sstat *si)
         int clockrate = 0, curclock = 0;
 	
 	GETSYSCTL("hw.clockrate", clockrate);
-	GETSYSCTL("dev.cpu.0.freq", curclock); /* never saw dev.cpu.1.. */
+	/* there is always dev.cpu.0, see powerd src */
+	GETSYSCTL("dev.cpu.0.freq", curclock); 
         for (i = 0; i < si->cpu.nrcpu; ++i)
         {
                 si->cpu.cpu[i].freqcnt.maxfreq	= clockrate;
-                if (curclock) /* cpufreq detected */
+                if (curclock) /* cpufreq(4) detected */
             	    si->cpu.cpu[i].freqcnt.cnt = curclock;
             	else
             	    si->cpu.cpu[i].freqcnt.cnt = clockrate;
                 si->cpu.cpu[i].freqcnt.ticks = 0;
         }
 
-	/*
-	** gather memory-related statistics from the file /proc/meminfo and
-	** store them in binary form
-	**
-	** in the file /proc/meminfo a 2.4 kernel starts with two lines
-	** headed by the strings "Mem:" and "Swap:" containing all required
-	** fields, except proper value for page cache
-        ** if these lines are present we try to skip parsing the rest
-	** of the lines; if these lines are not present we should get the
-	** required field from other lines
-	*/
 	si->mem.physmem	 	= (count_t)-1; 
 	si->mem.freemem		= (count_t)-1;
 	si->mem.buffermem	= (count_t)-1;
@@ -1135,22 +1125,38 @@ photosyst(struct sstat *si)
 	si->mem.committed 	= (count_t) 0;
 
 	long physmem = 0;
-	unsigned int freemem = 0, cachemem = 0, inactivemem = 0, wiremem = 0;
+	/* 
+	* FreeBSD provides 5 lists: Wired, Active, Inactive, Cache and Free 
+	* Mapping is: mem.freemem = Free, mem.cachedrt = Inactive, 
+	* mem.cachemem = Cache, mem.buffermem = Wired, mem.slabmem = Active
+	*/
+	
+	unsigned int freemem = 0, cachemem = 0, inactivemem = 0, wiremem = 0, activemem = 0;
 	GETSYSCTL("hw.physmem", physmem);
 	if(physmem)
 	    si->mem.physmem=physmem/pagesize;
+	/*  number of bytes free */
 	GETSYSCTL("vm.stats.vm.v_free_count", freemem);
 	if(freemem)
 	    si->mem.freemem=freemem;
+	/*
+	*  number of clean bytes caching data that are available for
+	*  immediate reallocation
+	*/
 	GETSYSCTL("vm.stats.vm.v_cache_count", cachemem);
 	if(cachemem)
 	    si->mem.cachemem=cachemem;
+	/* number of bytes inactive, store in cachedrt */
 	GETSYSCTL("vm.stats.vm.v_inactive_count", inactivemem);
-	if(inactivemem) /* hack. fixme plz. see http://lists.freebsd.org/pipermail/freebsd-questions/2005-February/075925.html */
+	if(inactivemem)
 	    si->mem.cachedrt=inactivemem;
 	GETSYSCTL("vm.stats.vm.v_wire_count", wiremem);
-	if(wiremem) /* hack. fixme plz. see http://lists.freebsd.org/pipermail/freebsd-questions/2005-February/075925.html */
+	if(wiremem) /*  number of bytes wired down, including cached file data pages */
 	    si->mem.buffermem=wiremem;
+	/*  number of bytes active */
+	GETSYSCTL("vm.stats.vm.v_active_count", activemem);
+	if(activemem) 
+	    si->mem.slabmem=activemem;
 
 	/* get swap information from kvm */
 	struct kvm_swap swapary[1];

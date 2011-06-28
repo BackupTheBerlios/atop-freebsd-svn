@@ -899,8 +899,11 @@ char *
 sysprt_MEMDIRTY(void *p, void *notused) 
 {
         struct sstat *sstat=p;
+#ifdef linux
         static char buf[16] = "dirty ";
-
+#elif defined(FREEBSD)
+        static char buf[16] = "inact ";
+#endif
         val2memstr(sstat->mem.cachedrt   * pagesize, buf+6, MBFORMAT, 0, 0);
 
         return buf;
@@ -913,7 +916,11 @@ char *
 sysprt_MEMBUFFER(void *p, void *notused) 
 {
         struct sstat *sstat=p;
+#ifdef linux
         static char buf[16]="buff  ";
+#elif defined(FREEBSD)
+        static char buf[16]="wired ";
+#endif
         val2memstr(sstat->mem.buffermem   * pagesize, buf+6, MBFORMAT, 0, 0);
         return buf;
 }
@@ -925,7 +932,11 @@ char *
 sysprt_MEMSLAB(void *p, void *notused) 
 {
         struct sstat *sstat=p;
+#ifdef linux
         static char buf[16]="slab  ";
+#elif defined(FREEBSD)
+        static char buf[16]="activ ";
+#endif
         val2memstr(sstat->mem.slabmem   * pagesize, buf+6, MBFORMAT, 0, 0);
         return buf;
 }
