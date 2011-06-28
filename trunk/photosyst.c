@@ -180,7 +180,6 @@ static const char rcsid[] = "$Id: photosyst.c,v 1.37 2010/11/14 06:42:18 gerlof 
 
 static int	isdisk(unsigned int, unsigned int,
 			char *, struct perdsk *, int);
-#endif
 static struct ipv6_stats	ipv6_tmp;
 static struct icmpv6_stats	icmpv6_tmp;
 static struct udpv6_stats	udpv6_tmp;
@@ -257,6 +256,7 @@ static struct v6tab 		v6tab[] = {
 };
 
 static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
+#endif
 
 #ifdef FREEBSD
 #include <sys/socketvar.h>

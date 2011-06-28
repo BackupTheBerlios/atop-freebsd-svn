@@ -1,7 +1,8 @@
-# Makefile for System & Process Monitor ATOP (Linux version)
+# Makefile for System & Process Monitor ATOP (FreeBSD version)
 #
 # Gerlof Langeveld - gerlof.langeveld@atoptool.nl
-#
+# Alex Samorukov - samm@os2.kiev.ua
+
 DESTDIR  =
 
 BINPATH  = /usr/bin
