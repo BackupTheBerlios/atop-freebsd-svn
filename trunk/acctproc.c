@@ -638,6 +638,8 @@ acctphotoproc(struct pstat *accproc, int nrprocs)
 			api->gen.excode = acctrec.ac_exitcode;
 			api->gen.ruid   = acctrec.ac_uid16;
 			api->gen.rgid   = acctrec.ac_gid16;
+			api->gen.btime = acctrec.ac_btime;
+			api->gen.elaps = acctrec.ac_etime;
 			api->cpu.stime  = acctexp(acctrec.ac_stime);
 			api->cpu.utime  = acctexp(acctrec.ac_utime);
 			api->mem.minflt = acctexp(acctrec.ac_minflt);

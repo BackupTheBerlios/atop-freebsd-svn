@@ -23,7 +23,7 @@
 */
 #include "netstats.h"
 
-#define	MAXCPUS	64
+#define	MAXCPUS		64
 #define	MAXDSK		256
 #define	MAXLVM		256
 #define	MAXMDD		128
