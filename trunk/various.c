@@ -569,8 +569,8 @@ cleanstop(exitcode)
 {
 	acctswoff();
 	(vis.show_end)();
-	exit(exitcode);
 #ifdef FREEBSD
 	kvm_close(kd);
 #endif
+	exit(exitcode);
 }

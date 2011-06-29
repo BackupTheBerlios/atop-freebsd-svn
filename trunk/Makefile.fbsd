@@ -15,6 +15,7 @@ CRNPATH  = /etc/cron.d
 ROTPATH  = /etc/logrotate.d
 PMPATH1  = /usr/lib/pm-utils/sleep.d
 PMPATH2  = /usr/lib64/pm-utils/sleep.d
+VERSION  = atop-1.26-freebsd-beta1
 
 CFLAGS  += -ggdb -g -O2 -I. -Wall -DFREEBSD	 # -DHTTPSTATS 
 LDFLAGS += -lncurses -lm -lz -lkvm -ldevstat -ggdb -g
@@ -77,8 +78,20 @@ install:	atop
 		touch          	  	$(DESTDIR)$(LOGPATH)/dummy_before
 		touch            	$(DESTDIR)$(LOGPATH)/dummy_after
 		if [ -z "$(DESTDIR)" ]; then /sbin/chkconfig --add atop; fi
-distr: rm -f *.o
-		tar czvf /tmp/atop.tar.gz *
+dist: clean
+		mkdir -p dist/$(VERSION)
+		cp acctproc.c acctproc.h atop.c atop.h atopsar.c deviate.c \
+		    ifprop.c ifprop.h netstats.h parseable.c parseable.h \
+		    photoproc.c photoproc.h photosyst.c photosyst.h procdbase.c \
+		    rawlog.c showgeneric.c showgeneric.h showlinux.c showlinux.h \
+		    showprocs.c showsys.c various.c version.c \
+		    AUTHOR COPYING ChangeLog Makefile Makefile.fbsd README \
+		    atop.cron atop.daily atop.init psaccs_atop psaccu_atop \
+		    dist/$(VERSION)
+		cp -r man dist/$(VERSION)
+		cd dist && tar -cvjf $(VERSION).tar.bz2 $(VERSION)
+		rm -rf dist/$(VERSION)
+		
 ##########################################################################
 
 atop.o:		atop.h	photoproc.h photosyst.h  acctproc.h showgeneric.h
