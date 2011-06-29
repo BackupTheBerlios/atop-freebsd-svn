@@ -651,7 +651,8 @@ acctphotoproc(struct pstat *accproc, int nrprocs)
 			api->cpu.utime  = acctexp(acctrec.ac_utime/10000); // ms
 			api->mem.minflt = 0;
 			api->mem.majflt = 0;
-			api->dsk.rio    = acctrec.ac_io;
+			api->dsk.rio    = 0; // acctrec.ac_io works buggy
+			api->dsk.wio    = 0; 
 #endif
 			api->gen.btime  = acctrec.ac_btime;
 			api->gen.elaps  = acctrec.ac_etime;

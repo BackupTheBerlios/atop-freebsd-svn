@@ -282,6 +282,10 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_fsm.h>
 
+#include <netinet/ip6.h>
+#include <netinet6/ip6_var.h>
+#include <netinet/icmp6.h>
+
 #define GETSYSCTL(name, var) getsysctl(name, &(var), sizeof(var))
 #include <sys/user.h>
 #include <kvm.h>
@@ -1505,14 +1509,14 @@ photosyst(struct sstat *si)
 	    {
 	       errx (1, "net.inet.tcp.pcblist: malloc failed.");
 	    }
-	    /* calculate number of established connection */
+	    /* calculate number of IPv4 and IPv6 established connection */
 	    if (sysctlbyname("net.inet.tcp.pcblist", xinpgen, &len, NULL, 0) == 0) {
 		for (ptr = (struct xinpgen *)(void *)((char *)xinpgen + xinpgen->xig_len);
 		    ptr->xig_len > sizeof(struct xinpgen);
 		    ptr = (struct xinpgen *)(void *)((char *)ptr + ptr->xig_len)) {
 			tp = (struct xtcpcb *)ptr;
 			if (tp->xt_inp.inp_gencnt > xinpgen->xig_gen ||
-			    (tp->xt_inp.inp_vflag & INP_IPV4) == 0)
+			    ((tp->xt_inp.inp_vflag & INP_IPV4) || (tp->xt_inp.inp_vflag & INP_IPV6)) == 0)
 		    continue;
 
 		tcp_total++;
@@ -1524,6 +1528,78 @@ photosyst(struct sstat *si)
 	    }
 	    free(xinpgen);
         }
+
+        struct ip6stat ip6stat;
+	len = sizeof ip6stat;
+	/* IPv6 stat */
+        if (!sysctlbyname("net.inet6.ip6.stats", &ip6stat, &len, 0, 0)) {
+	    si->net.ipv6.Ip6InReceives = ip6stat.ip6s_total;
+	    si->net.ipv6.Ip6InHdrErrors = ip6stat.ip6s_tooshort + ip6stat.ip6s_toosmall + 
+	    ip6stat.ip6s_toomanyhdr + ip6stat.ip6s_exthdrtoolong + ip6stat.ip6s_badvers;
+	    /* si->net.ipv6.Ip6InTooBigErrors =  */
+	    si->net.ipv6.Ip6InNoRoutes = ip6stat.ip6s_noroute;
+	    si->net.ipv6.Ip6InAddrErrors = ip6stat.ip6s_cantforward;
+	    /* si->net.ipv6.Ip6InUnknownProtos =  */
+	    si->net.ipv6.Ip6InTruncatedPkts = ip6stat.ip6s_toosmall;
+	    si->net.ipv6.Ip6InDiscards = ip6stat.ip6s_cantforward; /* ??? */
+	    si->net.ipv6.Ip6InDelivers = ip6stat.ip6s_delivered;
+	    si->net.ipv6.Ip6OutForwDatagrams = ip6stat.ip6s_forward;
+	    si->net.ipv6.Ip6OutRequests = ip6stat.ip6s_localout;
+	    si->net.ipv6.Ip6OutDiscards = ip6stat.ip6s_odropped;
+	    si->net.ipv6.Ip6OutNoRoutes = ip6stat.ip6s_noroute;
+	    si->net.ipv6.Ip6ReasmTimeout = ip6stat.ip6s_fragtimeout;
+	    /* si->net.ipv6.Ip6ReasmReqds = ip6stat.ip6s_cantfrag; */
+	    si->net.ipv6.Ip6ReasmOKs = ip6stat.ip6s_reassembled;
+	    si->net.ipv6.Ip6ReasmFails = ip6stat.ip6s_fragdropped + ip6stat.ip6s_fragtimeout;
+	    si->net.ipv6.Ip6FragOKs = ip6stat.ip6s_fragments - (ip6stat.ip6s_fragdropped + ip6stat.ip6s_fragtimeout);
+	    si->net.ipv6.Ip6FragFails = ip6stat.ip6s_cantfrag;
+	    si->net.ipv6.Ip6FragCreates = ip6stat.ip6s_ofragments;
+	    /* si->net.ipv6.Ip6InMcastPkts =  */
+	    /* si->net.ipv6.Ip6OutMcastPkts =  */
+	}
+
+	/* ICMPv6 stat */
+        struct icmp6stat icmp6stat;
+	len = sizeof icmp6stat;
+	/* IPv6 stat */
+	if (!sysctlbyname("net.inet6.icmp6.stats", &icmp6stat, &len, 0, 0)) {
+	    si->net.icmpv6.Icmp6InMsgs = icmp6stat.icp6s_badcode + icmp6stat.icp6s_tooshort +
+				    icmp6stat.icp6s_checksum + icmp6stat.icp6s_badlen;
+	for (i=0; i <= ICMP6_MAXTYPE; i++)
+	    si->net.icmpv6.Icmp6InMsgs += icmp6stat.icp6s_inhist[i];
+
+	    si->net.icmpv6.Icmp6InErrors = icmp6stat.icp6s_badcode + icmp6stat.icp6s_tooshort +
+					    icmp6stat.icp6s_checksum + icmp6stat.icp6s_badlen;
+	    si->net.icmpv6.Icmp6InDestUnreachs = icmp6stat.icp6s_inhist[ICMP6_DST_UNREACH];
+	    si->net.icmpv6.Icmp6InPktTooBigs = icmp6stat.icp6s_inhist[ICMP6_PACKET_TOO_BIG];
+	    si->net.icmpv6.Icmp6InTimeExcds = icmp6stat.icp6s_inhist[ICMP6_TIME_EXCEEDED];
+	    si->net.icmpv6.Icmp6InParmProblems = icmp6stat.icp6s_inhist[ICMP6_PARAM_PROB];
+	    si->net.icmpv6.Icmp6InEchos = icmp6stat.icp6s_inhist[ICMP6_ECHO_REQUEST];
+	    si->net.icmpv6.Icmp6InEchoReplies = icmp6stat.icp6s_inhist[ICMP6_ECHO_REPLY];
+	    si->net.icmpv6.Icmp6InGroupMembQueries = icmp6stat.icp6s_inhist[ICMP6_MEMBERSHIP_QUERY];
+	    si->net.icmpv6.Icmp6InGroupMembResponses = icmp6stat.icp6s_inhist[ICMP6_MEMBERSHIP_REPORT];
+	    si->net.icmpv6.Icmp6InGroupMembReductions = icmp6stat.icp6s_inhist[ICMP6_MEMBERSHIP_REDUCTION];
+	    si->net.icmpv6.Icmp6InRouterSolicits = icmp6stat.icp6s_inhist[ND_ROUTER_SOLICIT];
+	    si->net.icmpv6.Icmp6InRouterAdvertisements = icmp6stat.icp6s_inhist[ND_ROUTER_ADVERT];
+	    si->net.icmpv6.Icmp6InNeighborSolicits = icmp6stat.icp6s_inhist[ND_NEIGHBOR_SOLICIT];
+	    si->net.icmpv6.Icmp6InNeighborAdvertisements = icmp6stat.icp6s_inhist[ND_NEIGHBOR_ADVERT];
+	    si->net.icmpv6.Icmp6InRedirects = icmp6stat.icp6s_inhist[ND_REDIRECT];
+	    si->net.icmpv6.Icmp6OutMsgs = icmp6stat.icp6s_badcode + icmp6stat.icp6s_tooshort +
+					icmp6stat.icp6s_checksum + icmp6stat.icp6s_badlen;
+	    for (i=0; i <= ICMP6_MAXTYPE; i++)
+		si->net.icmpv6.Icmp6OutMsgs += icmp6stat.icp6s_outhist[i];
+	    si->net.icmpv6.Icmp6OutDestUnreachs = icmp6stat.icp6s_outhist[ICMP6_DST_UNREACH];
+	    si->net.icmpv6.Icmp6OutPktTooBigs = icmp6stat.icp6s_outhist[ICMP6_PACKET_TOO_BIG];
+	    si->net.icmpv6.Icmp6OutTimeExcds = icmp6stat.icp6s_outhist[ICMP6_TIME_EXCEEDED];
+	    si->net.icmpv6.Icmp6OutParmProblems = icmp6stat.icp6s_outhist[ICMP6_PARAM_PROB];
+	    si->net.icmpv6.Icmp6OutEchoReplies = icmp6stat.icp6s_outhist[ICMP6_ECHO_REPLY];
+	    si->net.icmpv6.Icmp6OutRouterSolicits = icmp6stat.icp6s_outhist[ND_ROUTER_SOLICIT];
+	    si->net.icmpv6.Icmp6OutNeighborSolicits = icmp6stat.icp6s_outhist[ND_NEIGHBOR_SOLICIT];
+	    si->net.icmpv6.Icmp6OutNeighborAdvertisements = icmp6stat.icp6s_outhist[ND_NEIGHBOR_ADVERT];
+	    si->net.icmpv6.Icmp6OutRedirects = icmp6stat.icp6s_outhist[ND_REDIRECT];
+	    si->net.icmpv6.Icmp6OutGroupMembResponses = icmp6stat.icp6s_outhist[ICMP6_MEMBERSHIP_REPORT];
+	    si->net.icmpv6.Icmp6OutGroupMembReductions = icmp6stat.icp6s_outhist[ICMP6_MEMBERSHIP_REDUCTION];
+	}
 	
 	/*
 	** fetch application-specific counters
