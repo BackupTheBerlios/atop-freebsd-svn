@@ -741,7 +741,11 @@ fillproc(struct pstat *curproc, struct kinfo_proc *pp)
 	}
 	curproc->cpu.policy   = pp->ki_pri.pri_class; // it is different value then in Linux
 	curproc->cpu.curcpu   = (int)pp->ki_lastcpu;
-	curproc->cpu.sleepavg = 0; /* FIXME it is possible to calculate it like PS do, do we need this ? */ 
+	/* 
+	* sleepavg value currently is not used by atop 
+	* and not directly provided by FreeBSD kernel 
+	*/ 
+	curproc->cpu.sleepavg = 0; 
 
 	curproc->mem.minflt   = pp->ki_rusage.ru_minflt;
 	curproc->mem.majflt   = pp->ki_rusage.ru_majflt;
@@ -751,7 +755,7 @@ fillproc(struct pstat *curproc, struct kinfo_proc *pp)
 	curproc->mem.rgrow    = 0;	/* calculated later */
 	curproc->mem.shtext   = pp->ki_tsize * (pagesize/1024);
 
-	curproc->dsk.rio      = pp->ki_rusage.ru_inblock; /* FIXME Provided data is in blocks, no idea if it is possible to convert it to bytes */
+	curproc->dsk.rio      = pp->ki_rusage.ru_inblock; /* Provided data is in blocks, no idea if it is possible to convert it to bytes */
 	curproc->dsk.rsz      = pp->ki_rusage.ru_inblock;
 	curproc->dsk.wio      = pp->ki_rusage.ru_oublock;
 	curproc->dsk.wsz      = pp->ki_rusage.ru_oublock;
