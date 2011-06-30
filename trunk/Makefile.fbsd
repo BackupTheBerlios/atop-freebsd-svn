@@ -15,10 +15,10 @@ CRNPATH  = /etc/cron.d
 ROTPATH  = /etc/logrotate.d
 PMPATH1  = /usr/lib/pm-utils/sleep.d
 PMPATH2  = /usr/lib64/pm-utils/sleep.d
-VERSION  = atop-1.26.fbsd.beta2
+VERSION  = atop-1.26.fbsd.beta3
 
-CFLAGS  += -ggdb -g -O2 -I. -Wall -DFREEBSD	 # -DHTTPSTATS 
-LDFLAGS += -lncurses -lm -lz -lkvm -ldevstat -ggdb -g
+CFLAGS  += -Wall -DFREEBSD	 # -DHTTPSTATS 
+LDFLAGS += -lncurses -lm -lz -lkvm -ldevstat
 OBJMOD0  = version.o
 OBJMOD1  = various.o  deviate.o   procdbase.o
 OBJMOD2  = acctproc.o photoproc.o photosyst.o  rawlog.o ifprop.o parseable.o
