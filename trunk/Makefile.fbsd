@@ -15,7 +15,7 @@ CRNPATH  = /etc/cron.d
 ROTPATH  = /etc/logrotate.d
 PMPATH1  = /usr/lib/pm-utils/sleep.d
 PMPATH2  = /usr/lib64/pm-utils/sleep.d
-VERSION  = atop-1.26-freebsd-beta1
+VERSION  = atop-1.26.fbsd.beta2
 
 CFLAGS  += -ggdb -g -O2 -I. -Wall -DFREEBSD	 # -DHTTPSTATS 
 LDFLAGS += -lncurses -lm -lz -lkvm -ldevstat -ggdb -g

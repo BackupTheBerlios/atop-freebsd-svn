@@ -303,7 +303,7 @@ static const char rcsid[] = "$Id: atop.c,v 1.49 2010/10/23 14:01:00 gerlof Exp $
  #include <devstat.h>
  #include <paths.h>
  #include <err.h>
- kvm_t *kd;
+ kvm_t *kd = NULL;
 #endif
 
 #define	allflags  "ab:cde:fghijklmnopqrstuvwxyz1ABCDEFGHIJKL:MNOP:QRSTUVWXYZ"
