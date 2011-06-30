@@ -238,8 +238,8 @@ initifprop(void)
 	#endif
 	#ifdef FREEBSD
 	/**
-	** On FREEBSD we are using getifaddrs to get interface list and 
-	** SIOCGIFMEDIA ioctl for the media information
+	** On FreeBSD we are using IFMIB_IFDATA sysctl to get interface list
+	** and SIOCGIFMEDIA ioctl for the media information
 	**/
 	struct ifmediareq ifmr;
 	int i = 0, sockfd = 0;
