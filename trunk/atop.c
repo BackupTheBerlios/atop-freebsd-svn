@@ -648,9 +648,10 @@ main(int argc, char *argv[])
 #ifdef FREEBSD
 	/* 
 	** The functions kvm_open()  return a descriptor used to
-	**  access kernel virtual memory via the kvm(3) library routines
+	** access kernel virtual memory via the kvm(3) library routines
+	** error reporting disabled because it may break ncurses
 	*/
-	kd = kvm_open(NULL, _PATH_DEVNULL, NULL, O_RDONLY, "kvm_open");
+	kd = kvm_open(NULL, _PATH_DEVNULL, NULL, O_RDONLY, NULL);
 	/*
 	 * Make sure that the userland devstat version matches the kernel
 	 * devstat version.  If not, exit and print a message informing
