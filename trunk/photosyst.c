@@ -1198,12 +1198,12 @@ photosyst(struct sstat *si)
 	if(pswapout)
 	    si->mem.swouts = pswapout;
 	
-	int num_devices = 0, num_selected, num_selections;
+	static int num_devices = 0, num_selected, num_selections;
 	static char firstcall = 1;
 	
 	long generation;
 	long select_generation;
-	char **specified_devices = NULL;
+	static char **specified_devices = NULL;
 	struct devstat_match *matches = NULL;
 	
 	/* fetchig disk statistic using devstat data */
