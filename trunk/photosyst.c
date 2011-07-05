@@ -1036,8 +1036,8 @@ getsysctl(const char *name, void *ptr, size_t len)
     size_t nlen = len;
 
     if (sysctlbyname(name, ptr, &nlen, NULL, 0) == -1) {
-	if(errno == ENOENT)
-	    return; /* silently return if sysctl not found */
+	if(errno == ENOENT || errno == ENXIO)
+	    return; /* silently return if sysctl not found  or not configured*/
 	fprintf(stderr, "atop: sysctl(%s...) failed: %s (%d)\n", name,
 	    strerror(errno), errno);
 	exit(1);
