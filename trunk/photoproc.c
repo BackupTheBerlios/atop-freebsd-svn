@@ -810,7 +810,8 @@ countprocs(void)
 	int nproc = 0, nproc_all = 0, i = 0;
 	struct kinfo_proc *pbase;
 	/* 
-	** it is probably not very accurate, because includes threads and system processes
+	** Result of the function is used to (re)allocte memory for the proc
+	** structure. It is not  very accurate, because includes threads.
 	*/
 	pbase = kvm_getprocs(kd, KERN_PROC_ALL, 0, &nproc_all);
 	for (i = nproc_all; --i >= 0; ++pbase) {
