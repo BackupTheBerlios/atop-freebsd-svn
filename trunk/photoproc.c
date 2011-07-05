@@ -663,6 +663,8 @@ photoproc(struct pstat *proclist, int maxproc)
 		memset(curproc->gen.cmdline, 0, CMDLEN+1);
 		strncpy(curproc->gen.cmdline, string, CMDLEN); 
 		pval++;
+		if(pval == maxproc)  /* do not write more procs then allocated memory */
+		    break;
 	    }
 	}
 	return pval;
