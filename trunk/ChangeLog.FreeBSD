@@ -1,3 +1,4 @@
++ Fixed bug in original code when getpwent was returning last record
 + Fixed 'atop: sysctl(dev.cpu.0.freq...) failed: Device not configured (6)'
   message on startup reported by some users.
 --- atop-freebsd beta5

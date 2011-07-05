@@ -1285,6 +1285,7 @@ generic_samp(time_t curtime, int nsecs,
 					}
 					else
 					{
+						setpwent();
 						while ( (pwd = getpwent()))
 						{
 							if (regexec(&userregex,
