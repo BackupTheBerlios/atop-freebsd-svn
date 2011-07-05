@@ -1,0 +1,6 @@
+--- atop-freebsd beta5
++ Fixed possible memory corruption in the photoproc() function caused 
+  many issues
+
+--- atop-freebsd beta4
+* First public beta
