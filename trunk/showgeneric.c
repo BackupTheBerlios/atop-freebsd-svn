@@ -2019,6 +2019,7 @@ do_username(char *name, char *val)
 			exit(1);
 		}
 
+		setpwent();
 		while ( (pwd = getpwent()))
 		{
 			if (regexec(&userregex, pwd->pw_name, 0, NULL, 0))
