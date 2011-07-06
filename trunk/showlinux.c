@@ -447,6 +447,7 @@ proc_printdef *allprocpdefs[]=
 {
 	&procprt_PID,
 	&procprt_PPID,
+	&procprt_JID,
 	&procprt_SYSCPU,
 	&procprt_USRCPU,
 	&procprt_VGROW,
@@ -1188,14 +1189,21 @@ priphead(int curlist, int totlist, char showtype, char showorder, char autosort)
                         "TCPSASZ:4 UDPRCV:8 UDPRASZ:3 UDPSND:8 UDPSASZ:3 "
                         "RAWRCV:7 RAWSND:7 SORTITEM:10 CMD:10", 
                         "built-in netprocs");
-
+#ifdef linux
                 make_proc_prints(varprocs, MAXITEMS,
                         "PID:10 PPID:9 RUID:8 RGID:8 EUID:5 EGID:4 "
      			"SUID:3 SGID:2 FSUID:3 FSGID:2 "
                         "STDATE:7 STTIME:7 ENDATE:5 ENTIME:5 "
 			"ST:6 EXC:6 S:6 SORTITEM:10 CMD:10", 
                         "built-in varprocs");
-
+#elif defined(FREEBSD)
+                make_proc_prints(varprocs, MAXITEMS,
+                        "PID:10 PPID:9 RUID:8 RGID:8 EUID:5 EGID:4 "
+     			"SUID:3 SGID:2 JID:3 "
+                        "STDATE:7 STTIME:7 ENDATE:5 ENTIME:5 "
+			"ST:6 EXC:6 S:6 SORTITEM:10 CMD:10", 
+                        "built-in varprocs");
+#endif
                 make_proc_prints(cmdprocs, MAXITEMS,
                         "PID:10 SORTITEM:10 COMMAND-LINE:10", 
                         "built-in cmdprocs");

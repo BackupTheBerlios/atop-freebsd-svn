@@ -474,6 +474,26 @@ proc_printdef procprt_PPID =
 
 /***************************************************************/
 char *
+procprt_JID_a(struct pstat *curstat, int avgval, int nsecs)
+{
+        static char buf[10];
+
+        sprintf(buf, "%5d", curstat->gen.jid);
+        return buf;
+}
+
+
+char *
+procprt_JID_e(struct pstat *curstat, int avgval, int nsecs)
+{
+        return "     ";
+}
+
+proc_printdef procprt_JID = 
+   { "  JID", "JID", procprt_JID_a, procprt_JID_e, 5 };
+
+/***************************************************************/
+char *
 procprt_SYSCPU_ae(struct pstat *curstat, int avgval, int nsecs)
 {
         static char buf[10];

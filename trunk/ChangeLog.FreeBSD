@@ -1,9 +1,13 @@
-+ Fixed bug in original code when getpwent was returning last record
-+ Fixed 'atop: sysctl(dev.cpu.0.freq...) failed: Device not configured (6)'
+! Added README.FreeBSD
++ Added JID keyword to show Jail ID in the FreeBSD. Added JID to the "v" 
+  output and removed useless FSUID/FSGID.
+# Fixed bug in original code when getpwent was returning last record
+# Fixed 'atop: sysctl(dev.cpu.0.freq...) failed: Device not configured (6)'
   message on startup reported by some users.
+
 --- atop-freebsd beta5
-+ Fixed possible memory corruption in the photoproc() function caused 
+# Fixed possible memory corruption in the photoproc() function caused 
   many issues
 
 --- atop-freebsd beta4
-* First public beta
+! First public beta

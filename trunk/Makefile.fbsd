@@ -15,7 +15,7 @@ CRNPATH  = /etc/cron.d
 ROTPATH  = /etc/logrotate.d
 PMPATH1  = /usr/lib/pm-utils/sleep.d
 PMPATH2  = /usr/lib64/pm-utils/sleep.d
-VERSION  = atop-1.26.fbsd.beta5
+VERSION  = atop-1.26.fbsd.beta6
 
 CFLAGS  += -Wall -DFREEBSD	 # -DHTTPSTATS 
 LDFLAGS += -lncurses -lm -lz -lkvm -ldevstat
@@ -86,7 +86,7 @@ dist: clean
 		    rawlog.c showgeneric.c showgeneric.h showlinux.c showlinux.h \
 		    showprocs.c showsys.c various.c version.c \
 		    AUTHOR COPYING ChangeLog Makefile Makefile.fbsd README \
-		    ChangeLog.FreeBSD \
+		    ChangeLog.FreeBSD README.FreeBSD \
 		    atop.cron atop.daily atop.init psaccs_atop psaccu_atop \
 		    dist/$(VERSION)
 		cp -r man dist/$(VERSION)

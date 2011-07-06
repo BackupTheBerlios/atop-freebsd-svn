@@ -683,6 +683,7 @@ fillproc(struct pstat *curproc, struct kinfo_proc *pp)
 	curproc->gen.egid     = pp->ki_pgid;
 	curproc->gen.sgid     = pp->ki_svgid;
 	curproc->gen.fsgid    = 0; /* we don`t have it on BSD? */
+	curproc->gen.jid      = pp->ki_jid;
 	curproc->gen.nthr     = pp->ki_numthreads;
 	/*
 	 *   generate "STATE" field, emulating linux

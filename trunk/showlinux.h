@@ -232,6 +232,7 @@ char *procprt_NOTAVAIL_7(struct pstat *curstat, int avgval, int nsecs);
 extern proc_printdef *allprocpdefs[];
 extern proc_printdef procprt_PID;
 extern proc_printdef procprt_PPID;
+extern proc_printdef procprt_JID;
 extern proc_printdef procprt_SYSCPU;
 extern proc_printdef procprt_USRCPU;
 extern proc_printdef procprt_VGROW;
