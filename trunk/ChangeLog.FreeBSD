@@ -1,3 +1,6 @@
+# Maximum CPU Frequency detection is now more accurate if cpufreq() driver 
+  is installed and working. This fixing "99% scaling" bug. 
+
 --- atop-freebsd beta6 (2011-07-07)
 ! Added README.FreeBSD
 + Added JID keyword to show Jail ID in the FreeBSD. Added JID to the "v" 

@@ -291,6 +291,7 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 #include <kvm.h>
 #include <devstat.h>
 #include <err.h>
+#include <ctype.h>
 
 extern  kvm_t *kd;
 struct device_selection *dev_select;
@@ -1126,7 +1127,31 @@ photosyst(struct sstat *si)
 	*/
         int clockrate = 0, curclock = 0;
 	
+	/* default method, always available */
 	GETSYSCTL("hw.clockrate", clockrate);
+	{
+	    char buf[1024];
+    	    size_t len = sizeof(buf);
+	    char *curptr;
+	    int freq = 0, tmpfreq = 0;
+	
+	    if (sysctlbyname("dev.cpu.0.freq_levels", buf, &len, NULL, 0) == -1)
+	        buf[0] = '\0';
+	    curptr = buf;
+	    while (isdigit(curptr[0])) {
+		freq = strtol(curptr, &curptr, 10);
+		if (freq > tmpfreq)
+		    tmpfreq = freq;
+	        /* Skip the rest of this entry */
+		 while (!isspace(curptr[0]) && curptr[0] != '\0')
+		    curptr++;
+		/* Find the next entry */
+		while (!isdigit(curptr[0]) && curptr[0] != '\0')
+		    curptr++;
+	    }
+	    if(tmpfreq)
+		clockrate = tmpfreq;
+	}
 	/* there is always dev.cpu.0, see powerd src */
 	GETSYSCTL("dev.cpu.0.freq", curclock); 
         for (i = 0; i < si->cpu.nrcpu; ++i)
