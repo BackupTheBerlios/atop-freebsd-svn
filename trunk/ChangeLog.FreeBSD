@@ -1,3 +1,4 @@
+# Fix compilation error on FreeBSD 7.1 RELEASE
 # Maximum CPU Frequency detection is now more accurate if cpufreq() driver 
   is installed and working. This fixing "99% scaling" bug. 
 

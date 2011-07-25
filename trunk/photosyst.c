@@ -269,6 +269,7 @@ static int	v6tab_entries = sizeof(v6tab)/sizeof(struct v6tab);
 #include <sys/time.h>
 #include <net/if.h>
 #include <net/if_mib.h>
+#include <netinet/in_systm.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
