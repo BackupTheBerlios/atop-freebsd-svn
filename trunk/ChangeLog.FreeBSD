@@ -1,3 +1,5 @@
+# Added setrlimit to 100Mb (experemental)
+
 --- atop-freebsd beta7 (2011-07-26)
 # Fix compilation error on FreeBSD 7.1 RELEASE
 # Maximum CPU Frequency detection is now more accurate if cpufreq() driver

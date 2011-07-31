@@ -659,6 +659,15 @@ main(int argc, char *argv[])
 	 */
 	if (devstat_checkversion(NULL) < 0)
 		errx(1, "%s", devstat_errbuf);
+	/* Limit maximum of memory allowed to allocate. Some users
+	 * reported problem with atop eating all memory. While 
+	 i am unable to repeat it or find possible reason it is better to 
+	 make the limit instead of eating all available RAM */
+	/* set 100mb vmem limit */
+	#define ATOP_MAXVMEM 100 * 1024 * 1024; 
+	struct rlimit lim;
+	lim.rlim_cur = lim.rlim_max = ATOP_MAXVMEM;
+	setrlimit(RLIMIT_VMEM, &lim);
 #endif
 	/*
 	** determine properties (like speed) of all interfaces
