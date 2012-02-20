@@ -1,3 +1,4 @@
+--- atop-freebsd beta8 (2012-02-21)
 # Added setrlimit to 100Mb (experemental)
 
 --- atop-freebsd beta7 (2011-07-26)
