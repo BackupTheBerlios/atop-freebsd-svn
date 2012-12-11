@@ -17,7 +17,7 @@
 ** Linux-port:  June 2000
 ** Modified: 	May 2001 - Ported to kernel 2.4
 ** --------------------------------------------------------------------------
-** Copyright (C) 2000-2010 Gerlof Langeveld
+** Copyright (C) 2000-2012 Gerlof Langeveld
 **
 ** This program is free software; you can redistribute it and/or modify it
 ** under the terms of the GNU General Public License as published by the
@@ -59,7 +59,7 @@
 **        |              |             |              V            V 
 **      ______       _________     __________     ________     _________
 **     /      \     /         \   /          \   /        \   /         \
-**      /proc          /proc       accounting     process-     screen or
+**      /proc          /proc       accounting       task       screen or
 **                                    file        database        file
 **     \______/     \_________/   \__________/   \________/   \_________/
 **
@@ -71,20 +71,20 @@
 **
 **    -	photoproc()
 **	Takes a snapshot of the counters related to resource-usage of
-**	processes which are currently active. For this purpose the whole
+**	tasks which are currently active. For this purpose the whole
 **	task-list is read.
 **	This code is UNIX-flavor dependent; in case of Linux the counters
 **	are retrieved from /proc.
 **
 **    -	acctphotoproc()
 **	Takes a snapshot of the counters related to resource-usage of
-**	processes which have been finished during the last interval.
+**	tasks which have been finished during the last interval.
 **	For this purpose all new records in the accounting-file are read.
 **
 ** When all counters have been gathered, functions are called to calculate
 ** the difference between the current counter-values and the counter-values
 ** of the previous cycle. These functions operate on the system-level
-** as well as on the process-level counters. 
+** as well as on the task-level counters. 
 ** These differences are stored in a new structure(-table). 
 **
 **    -	deviatsyst()
@@ -92,13 +92,13 @@
 ** 	counters and the corresponding counters of the previous cycle.
 **
 **    -	deviatproc()
-**	Calculates the differences between the current process-level
+**	Calculates the differences between the current task-level
 ** 	counters and the corresponding counters of the previous cycle.
-**	The per-process counters of the previous cycle are stored in the
-**	process-database; this "database" is implemented as a linked list
-**	of process-info structures in memory (so no disk-accesses needed).
+**	The per-task counters of the previous cycle are stored in the
+**	task-database; this "database" is implemented as a linked list
+**	of task-info structures in memory (so no disk-accesses needed).
 **	Within this linked list hash-buckets are maintained for fast searches.
-**	The entire process-database is handled via a set of well-defined 
+**	The entire task-database is handled via a set of well-defined 
 ** 	functions from which the name starts with "pdb_..." (see the
 **	source-file procdbase.c).
 **	The processes which have been finished during the last cycle
@@ -183,7 +183,7 @@
 ** Introduction of variable supportflags.
 **
 ** Revision 1.28  2007/03/20 12:13:00  gerlof
-** Be sure that all pstat struct's are initialized with binary zeroes.
+** Be sure that all tstat struct's are initialized with binary zeroes.
 **
 ** Revision 1.27  2007/02/19 11:55:04  gerlof
 ** Bug-fix: flag -S was not recognized any more.
@@ -307,7 +307,7 @@ static const char rcsid[] = "$Id: atop.c,v 1.49 2010/10/23 14:01:00 gerlof Exp $
 #endif
 
 #define	allflags  "ab:cde:fghijklmnopqrstuvwxyz1ABCDEFGHIJKL:MNOP:QRSTUVWXYZ"
-#define	PROCCHUNK	50	/* process-entries for future expansion  */
+#define	PROCCHUNK	100	/* process-entries for future expansion  */
 #define	MAXFL		64      /* maximum number of command-line flags  */
 
 /*
@@ -321,13 +321,16 @@ unsigned long	interval = 10;
 unsigned long 	sampcnt;
 char		screen;
 int		linelen  = 80;
-char		acctactive;	/* accounting active (boolean)		*/
+char		acctreason;	/* accounting not active (return val) 	*/
 char		rawname[RAWNAMESZ];
 char		rawreadflag;
 unsigned int	begintime, endtime;
 char		flaglist[MAXFL];
-char		deviatonly  = 1;
+char		deviatonly = 1;
 char		filterkernel = 1;
+char      	usecolors  = 1;  /* boolean: colors for high occupation  */
+char		threadview = 0;	 /* boolean: show individual threads     */
+
 unsigned short	hertz;
 unsigned int	pagesize;
 int 		osrel;
@@ -439,7 +442,11 @@ main(int argc, char *argv[])
 	** the root-priviliges are dropped by switching effective user-id
 	** to real user-id (security reasons)
 	*/
-	seteuid ( getuid() );
+        if (! droprootprivs() )
+	{
+		fprintf(stderr, "not possible to drop root privs\n");
+                exit(42);
+	}
 
 	/*
 	** preserve command arguments to allow restart of other version
@@ -557,7 +564,7 @@ main(int argc, char *argv[])
 		/*
 		** get optional interval-value and optional number of samples	
 		*/
-		if (optind < argc && optind < MAXFL)
+			if (optind < argc && optind < MAXFL)
 		{
 			if (!numeric(argv[optind]))
 				prusage(argv[0]);
@@ -608,7 +615,7 @@ main(int argc, char *argv[])
 	/*
 	** determine start-time for gathering current statistics
 	*/
-	curtime = getboot();
+	curtime = getboot() / hertz;
 
 	/*
 	** catch signals for proper close-down
@@ -620,7 +627,7 @@ main(int argc, char *argv[])
 	** regain the root-priviliges that we dropped at the beginning
 	** to do some priviliged work
 	*/
-	seteuid(0);
+	regainrootprivs();
 
 	/*
 	** lock ATOP in memory to get reliable samples (also when
@@ -638,13 +645,14 @@ main(int argc, char *argv[])
 	** during heavy CPU load);
 	** ignored if not running under superuser priviliges!
 	*/
-	(void) nice(-20);
+	nice(-20);
 
 	/*
 	** switch-on the process-accounting mechanism to register the
 	** (remaining) resource-usage by processes which have finished
 	*/
-	acctswon();
+	acctreason = acctswon();
+
 #ifdef FREEBSD
 	/* 
 	** The functions kvm_open()  return a descriptor used to
@@ -669,17 +677,24 @@ main(int argc, char *argv[])
 	lim.rlim_cur = lim.rlim_max = ATOP_MAXVMEM;
 	setrlimit(RLIMIT_VMEM, &lim);
 #endif
+
 	/*
 	** determine properties (like speed) of all interfaces
 	*/
 	initifprop();
 
 	/*
+ 	** open socket to the IP layer to issue getsockopt() calls later on
+	*/
+	netatop_ipopen();
+	
+	/*
 	** since priviliged activities are finished now, there is no
 	** need to keep running under root-priviliges, so switch
 	** effective user-id to real user-id
 	*/
-	seteuid( getuid() );
+        if (! droprootprivs() )
+		cleanstop(42);
 
 	/*
 	** start the engine now .....
@@ -697,6 +712,7 @@ main(int argc, char *argv[])
 static void
 engine(void)
 {
+	int 			i, j;
 	struct sigaction 	sigact;
 	static time_t		timelimit;
 	void			getusr1(int), getusr2(int);
@@ -710,16 +726,19 @@ engine(void)
 	static struct sstat	*hlpsstat;
 
 	/*
-	** reserve space for process-level statistics
+	** reserve space for task-level statistics
 	*/
-	static struct pstat	*curpact;	/* current active list  */
+	static struct tstat	*curpact;	/* current active list  */
 	static int		curplen;	/* current active size  */
 
-	struct pstat		*curpexit;	/* exitted process list	*/
-	struct pstat		*devpstat;	/* deviation list	*/
+	struct tstat		*curpexit;	/* exited process list	*/
+	struct tstat		*devtstat;	/* deviation list	*/
+	struct tstat		**devpstat;	/* pointers to processes*/
+						/* in deviation list    */
 
-	int			npresent, nexit, n;
-	int			ntrun, ntslpi, ntslpu, nzombie;
+	unsigned int		ntask, nexit, nexitnet;
+	unsigned int		noverflow, ndeviat, nactproc;
+	int			totproc, totrun, totslpi, totslpu, totzombie;
 
 	/*
 	** initialization: allocate required memory dynamically
@@ -728,14 +747,13 @@ engine(void)
 	presstat = calloc(1, sizeof(struct sstat));
 	devsstat = calloc(1, sizeof(struct sstat));
 
-	curplen = countprocs() + PROCCHUNK;
-	curpact = calloc(curplen, sizeof(struct pstat));
+	curplen  = countprocs() * 3 / 2;	/* add 50% for threads */
+	curpact  = calloc(curplen, sizeof(struct tstat));
 
-	if (!cursstat || !presstat || !devsstat || !curpact)
-	{
-		fprintf(stderr, "unexpected calloc-failure...\n");
-		cleanstop(1);
-	}
+	ptrverify(cursstat, "Malloc failed for current sysstats\n");
+	ptrverify(presstat, "Malloc failed for prev    sysstats\n");
+	ptrverify(devsstat, "Malloc failed for deviate sysstats\n");
+	ptrverify(curpact,  "Malloc failed for %d procstats\n", curplen);
 
 	/*
 	** install the signal-handler for ALARM, USR1 and USR2 (triggers
@@ -823,51 +841,111 @@ engine(void)
 		deviatsyst(cursstat, presstat, devsstat);
 
 		/*
-		** take a snapshot of the current process-level statistics 
+		** take a snapshot of the current task-level statistics 
 		** and calculate the deviations (i.e. calculate the activity
 		** during the last sample)
 		**
-		** first register active processes
+		** first register active tasks
 		**  --> atop malloc's a minimal amount of space which is
 		**      only extended when needed
 		*/
-		memset(curpact, 0, curplen * sizeof(struct pstat));
+		memset(curpact, 0, curplen * sizeof(struct tstat));
 
-		while ( (npresent = photoproc(curpact, curplen)) == curplen)
+		while ( (ntask = photoproc(curpact, curplen)) == curplen)
 		{
-			curplen = countprocs() + PROCCHUNK;
+			curplen += PROCCHUNK;
 
 			curpact = realloc(curpact,
-			                   curplen * sizeof(struct pstat));
+					curplen * sizeof(struct tstat));
 
-			memset(curpact, 0, curplen * sizeof(struct pstat));
+			ptrverify(curpact,
+			          "Realloc failed for %d tasks\n", curplen);
+
+			memset(curpact, 0, curplen * sizeof(struct tstat));
 		}
 
 		/*
-		** register processes which exited during last sample;
-		** first determine how many processes exited and
-		** reserve space for them, and secondly obtain the info
+		** register processes that exited during last sample;
+		** first determine how many processes exited
+		**
+		** the number of exited processes is limited to avoid
+		** that atop explodes in memory and introduces OOM killing
 		*/
 		nexit = acctprocnt();	/* number of exited processes */
 
-		if (nexit > 0)	
+		if (nexit > MAXACCTPROCS)
 		{
-			curpexit = malloc(  nexit * sizeof(struct pstat));
-			memset(curpexit, 0, nexit * sizeof(struct pstat));
-
-			acctphotoproc(curpexit, nexit);
+			noverflow = nexit - MAXACCTPROCS;
+			nexit     = MAXACCTPROCS;
 		}
 		else
-			curpexit = NULL;
+			noverflow = 0;
+
+		/*
+		** determine how many processes have been exited
+		** for the netatop module (only processes that have
+		** used the network)
+		*/
+		if (nexit > 0 && (supportflags & NETATOPD))
+			nexitnet = netatop_exitstore();
+		else
+			nexitnet = 0;
+
+		/*
+		** reserve space for the exited processes and read them
+		*/
+		if (nexit > 0)
+		{
+			curpexit = malloc(nexit * sizeof(struct tstat));
+
+			ptrverify(curpexit,
+			          "Malloc failed for %d exited processes\n",
+			          nexit);
+
+			memset(curpexit, 0, nexit * sizeof(struct tstat));
+
+			acctphotoproc(curpexit, nexit);
+
+			/*
+ 			** reposition offset in accounting file when not
+			** all exited processes have been read (i.e. skip
+			** those processes)
+			*/
+			if (noverflow)
+				acctrepos(noverflow);
+		}
+		else
+		{
+			curpexit    = NULL;
+		}
 
 		/*
 		** calculate deviations
 		*/
-		devpstat = malloc((npresent+nexit) * sizeof(struct pstat));
+		devtstat = malloc((ntask+nexit) * sizeof(struct tstat));
 
-		n = deviatproc(curpact, npresent, curpexit, nexit,
-				deviatonly, devpstat, devsstat,
-				&ntrun, &ntslpi, &ntslpu, &nzombie);
+		ptrverify(devtstat, "Malloc failed for %d modified processes\n",
+			          				ntask+nexit);
+
+		ndeviat = deviatproc(curpact, ntask, curpexit, nexit, 
+				deviatonly, devtstat, devsstat, &nactproc,
+				&totproc, &totrun, &totslpi, &totslpu, 
+		                &totzombie);
+
+  	      	/*
+ 		** create list of pointers specifically to the process entries
+		** in the task list
+		*/
+       		devpstat = malloc(sizeof (struct tstat *) * nactproc);
+
+		ptrverify(devpstat, "Malloc failed for %d process ptrs\n",
+			          				nactproc);
+
+		for (i=0, j=0; i < ndeviat; i++)
+		{
+			if ( (devtstat+i)->gen.isproc)
+				devpstat[j++] = devtstat+i;
+		}
 
 		/*
 		** activate the installed print-function to visualize
@@ -875,9 +953,10 @@ engine(void)
 		*/
 		lastcmd = (vis.show_samp)( curtime,
 				     curtime-pretime > 0 ? curtime-pretime : 1,
-		           	     devsstat, devpstat, n, npresent,
-		                     ntrun, ntslpi, ntslpu, nzombie,
-		                     nexit, sampcnt==0);
+		           	     devsstat, devtstat, devpstat,
+		                     ndeviat, ntask, nactproc,
+		                     totproc, totrun, totslpi, totslpu,
+		                     totzombie, nexit, noverflow, sampcnt==0);
 
 		/*
 		** release dynamically allocated memory
@@ -885,19 +964,23 @@ engine(void)
 		if (nexit > 0)
 			free(curpexit);
 
+		if (nexitnet > 0)
+			netatop_exiterase();
+
+		free(devtstat);
 		free(devpstat);
 
 		if (lastcmd == 'r')	/* reset requested ? */
 		{
 			sampcnt = -1;
 
-			curtime = getboot();	/* reset current time */
+			curtime = getboot() / hertz;	// reset current time
 
 			/* set current (will be 'previous') counters to 0 */
 			memset(cursstat, 0,           sizeof(struct sstat));
-			memset(curpact,  0, curplen * sizeof(struct pstat));
+			memset(curpact,  0, curplen * sizeof(struct tstat));
 
-			/* remove all processes in process database */
+			/* remove all tasks in database */
 			pdb_makeresidue();
 			pdb_cleanresidue();
 		}

@@ -37,18 +37,23 @@
 
 typedef	long long	count_t;
 
-struct pstat;
+struct tstat;
 struct sstat;
+struct netpertask;
 
 /* 
 ** miscellaneous flags
 */
-#define RRBOOT  0x0001
-#define RRLAST  0x0002
+#define RRBOOT		0x0001
+#define RRLAST  	0x0002
+#define RRNETATOP	0x0004
+#define RRNETATOPD	0x0008
 
 struct visualize {
-	char	(*show_samp)  (time_t, int, struct sstat *, struct pstat *,
-				int, int, int, int, int, int, int, char);
+	char	(*show_samp)  (time_t, int,
+	                struct sstat *, struct tstat *, struct tstat **,
+			int, int, int, int, int, int, int, int, 
+			int, unsigned int, char);
 	void	(*show_error) (const char *, ...);
 	void	(*show_end)   (void);
 	void	(*show_usage) (void);
@@ -65,7 +70,10 @@ extern unsigned long    interval;
 extern unsigned long	sampcnt;
 extern char      	screen;
 extern int      	linelen;
+extern char      	acctreason;
 extern char		deviatonly;
+extern char		usecolors;
+extern char		threadview;
 extern char		rawname[];
 extern char		rawreadflag;
 extern unsigned int	begintime, endtime;
@@ -93,15 +101,17 @@ extern int		almostcrit;
 ** bit-values for supportflags
 */
 #define	ACCTACTIVE	0x00000001
-#define	PATCHSTAT	0x00000002
 #define	IOSTAT		0x00000004
-#define	PATCHACCT	0x00000008
+#define	NETATOP		0x00000010
+#define	NETATOPD	0x00000020
 
 /*
 ** structure containing the start-addresses of functions for visualization
 */
-char		generic_samp (time_t, int, struct sstat *, struct pstat *,
-		             int, int, int, int, int, int, int, char);
+char		generic_samp (time_t, int,
+		            struct sstat *, struct tstat *, struct tstat **,
+		            int, int, int, int, int, int, int, int,
+		            int, unsigned int, char);
 void		generic_error(const char *, ...);
 void		generic_end  (void);
 void		generic_usage(void);
@@ -134,13 +144,28 @@ int		intfcompar(const void *, const void *);
 
 count_t		subcount(count_t, count_t);
 void  		rawread(void);
-char		rawwrite(time_t, int, struct sstat *, struct pstat *,
-		                       int, int, int, int, int, int, int, char);
+char		rawwrite(time_t, int, struct sstat *, struct tstat *,
+			struct tstat **, int, int, int, int, int, int,
+			int, int, int, unsigned int, char);
 
 int 		numeric(char *);
 void		getalarm(int);
-time_t		getboot(void);
+unsigned long long	getboot(void);
 char 		*getstrvers(void);
 unsigned short 	getnumvers(void);
+void		ptrverify(const void *, const char *, ...);
 void		cleanstop(int);
 void		prusage(char *);
+
+int		droprootprivs(void);
+void		regainrootprivs(void);
+FILE 		*fopen_tryroot(const char *, const char *);
+
+void		netatop_ipopen(void);
+void		netatop_probe(void);
+void		netatop_signoff(void);
+void		netatop_gettask(pid_t, char, struct tstat *);
+unsigned int	netatop_exitstore(void);
+void		netatop_exiterase(void);
+void		netatop_exithash(char);
+void		netatop_exitfind(unsigned long, struct tstat *, struct tstat *);

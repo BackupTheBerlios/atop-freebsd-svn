@@ -12,7 +12,7 @@
 ** Date:        November 1996
 ** LINUX-port:  June 2000
 ** --------------------------------------------------------------------------
-** Copyright (C) 2000-2010 Gerlof Langeveld
+** Copyright (C) 2000-2012 Gerlof Langeveld
 **
 ** This program is free software; you can redistribute it and/or modify it
 ** under the terms of the GNU General Public License as published by the
@@ -30,6 +30,9 @@
 ** --------------------------------------------------------------------------
 **
 ** $Log: photosyst.c,v $
+** Revision 1.38  2010/11/19 07:40:40  gerlof
+** Support of virtual disk vd... (kvm).
+**
 ** Revision 1.37  2010/11/14 06:42:18  gerlof
 ** After opening /proc/cpuinfo, the file descriptor was not closed any more.
 **
@@ -146,7 +149,7 @@
 **
 */
 
-static const char rcsid[] = "$Id: photosyst.c,v 1.37 2010/11/14 06:42:18 gerlof Exp $";
+static const char rcsid[] = "$Id: photosyst.c,v 1.38 2010/11/19 07:40:40 gerlof Exp $";
 
 #include <sys/types.h>
 #include <stdio.h>
@@ -165,6 +168,10 @@ static const char rcsid[] = "$Id: photosyst.c,v 1.37 2010/11/14 06:42:18 gerlof 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+
+// #define	_GNU_SOURCE
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #include "atop.h"
 #include "photosyst.h"
@@ -310,14 +317,18 @@ photosyst(struct sstat *si)
 	char		linebuf[1024], nam[64], origdir[1024];
 	static char	part_stats = 1; /* per-partition statistics ? */
 	unsigned int	major, minor;
+	struct shm_info	shminfo;
 #if	HTTPSTATS
 	static int	wwwvalid = 1;
 #endif
 
 	memset(si, 0, sizeof(struct sstat));
 
-	getcwd(origdir, sizeof origdir);
-	chdir("/proc");
+	if ( getcwd(origdir, sizeof origdir) == NULL)
+		cleanstop(53);
+
+	if ( chdir("/proc") == -1)
+		cleanstop(53);
 
 	/*
 	** gather various general statistics from the file /proc/stat and
@@ -364,6 +375,14 @@ photosyst(struct sstat *si)
 			if ( strncmp("cpu", nam, 3) == EQ)
 			{
 				i = atoi(&nam[3]);
+
+				if (i >= MAXCPU)
+				{
+					fprintf(stderr,
+						"cpu %s exceeds maximum of %d\n",
+						nam, MAXCPU);
+					continue;
+				}
 
 				si->cpu.cpu[i].cpunr	= i;
 				si->cpu.cpu[i].utime	= cnts[0];
@@ -571,10 +590,7 @@ photosyst(struct sstat *si)
 	*/
 	if ( (fp = fopen("vmstat", "r")) != NULL)
 	{
-		int	nrfields = 9;	/* number of fields to be filled */
-
-		while ( fgets(linebuf, sizeof(linebuf), fp) != NULL &&
-								nrfields > 0)
+		while ( fgets(linebuf, sizeof(linebuf), fp) != NULL)
 		{
 			nr = sscanf(linebuf, "%s %lld", nam, &cnts[0]);
 
@@ -584,28 +600,30 @@ photosyst(struct sstat *si)
 			if ( strcmp("pswpin", nam) == EQ)
 			{
 				si->mem.swins   = cnts[0];
-				nrfields--;
 				continue;
 			}
 
 			if ( strcmp("pswpout", nam) == EQ)
 			{
 				si->mem.swouts  = cnts[0];
-				nrfields--;
-				continue;
-			}
-
-			if ( strcmp("allocstall", nam) == EQ)
-			{
-				si->mem.allocstall = cnts[0];
-				nrfields--;
 				continue;
 			}
 
 			if ( strncmp("pgscan_", nam, 7) == EQ)
 			{
 				si->mem.pgscans += cnts[0];
-				nrfields--;
+				continue;
+			}
+
+			if ( strncmp("pgsteal_", nam, 8) == EQ)
+			{
+				si->mem.pgsteal += cnts[0];
+				continue;
+			}
+
+			if ( strcmp("allocstall", nam) == EQ)
+			{
+				si->mem.allocstall = cnts[0];
 				continue;
 			}
 		}
@@ -629,13 +647,15 @@ photosyst(struct sstat *si)
 	si->mem.buffermem	= (count_t)-1;
 	si->mem.cachemem  	= (count_t)-1;
 	si->mem.slabmem		= (count_t) 0;
+	si->mem.slabreclaim	= (count_t) 0;
+	si->mem.shmem 		= (count_t) 0;
 	si->mem.totswap  	= (count_t)-1;
 	si->mem.freeswap 	= (count_t)-1;
 	si->mem.committed 	= (count_t) 0;
 
 	if ( (fp = fopen("meminfo", "r")) != NULL)
 	{
-		int	nrfields = 10;	/* number of fields to be filled */
+		int	nrfields = 12;	/* number of fields to be filled */
 
 		while ( fgets(linebuf, sizeof(linebuf), fp) != NULL && 
 								nrfields > 0)
@@ -706,6 +726,11 @@ photosyst(struct sstat *si)
 						nrfields--;
 					}
 				}
+			else	if (strcmp("Shmem:", nam) == EQ)
+				{
+					si->mem.shmem = cnts[0]*1024/pagesize;
+					nrfields--;
+				}
 			else	if (strcmp("SwapTotal:", nam) == EQ)
 				{
 					if (si->mem.totswap  == (count_t)-1)
@@ -727,6 +752,12 @@ photosyst(struct sstat *si)
 			else	if (strcmp("Slab:", nam) == EQ)
 				{
 					si->mem.slabmem = cnts[0]*1024/pagesize;
+					nrfields--;
+				}
+			else	if (strcmp("SReclaimable:", nam) == EQ)
+				{
+					si->mem.slabreclaim = cnts[0]*1024/
+								pagesize;
 					nrfields--;
 				}
 			else	if (strcmp("Committed_AS:", nam) == EQ)
@@ -1021,7 +1052,17 @@ photosyst(struct sstat *si)
 		fclose(fp);
 	}
 
-	chdir(origdir);
+	/*
+ 	** get information about the shared memory statistics
+	*/
+	if ( shmctl(0, SHM_INFO, (struct shmid_ds *)&shminfo) != -1)
+	{
+		si->mem.shmrss = shminfo.shm_rss;
+		si->mem.shmswp = shminfo.shm_swp;
+	}
+
+	if ( chdir(origdir) == -1)
+		cleanstop(53);
 
 	/*
 	** fetch application-specific counters
@@ -1790,14 +1831,17 @@ static struct {
 	{ "^sd[a-z][a-z]*$",			{0},  nullmodname, DSKTYPE, },
 	{ "^dm-[0-9][0-9]*$",			{0},  lvmmapname,  LVMTYPE, },
 	{ "^md[0-9][0-9]*$",			{0},  nullmodname, MDDTYPE, },
+	{ "^vd[a-z][a-z]*$",			{0},  nullmodname, DSKTYPE, },
 	{ "^hd[a-z]$",				{0},  nullmodname, DSKTYPE, },
 	{ "^rd/c[0-9][0-9]*d[0-9][0-9]*$",	{0},  nullmodname, DSKTYPE, },
 	{ "^cciss/c[0-9][0-9]*d[0-9][0-9]*$",	{0},  nullmodname, DSKTYPE, },
 	{ "^fio[a-z][a-z]*$",			{0},  nullmodname, DSKTYPE, },
 	{ "/host.*/bus.*/target.*/lun.*/disc",	{0},  abbrevname1, DSKTYPE, },
 	{ "^xvd[a-z][a-z]*$",			{0},  nullmodname, DSKTYPE, },
+	{ "^vd[a-z][a-z]*$",                    {0},  nullmodname, DSKTYPE, },
 	{ "^dasd[a-z][a-z]*$",			{0},  nullmodname, DSKTYPE, },
 	{ "^mmcblk[0-9][0-9]*$",		{0},  nullmodname, DSKTYPE, },
+	{ "^emcpower[a-z][a-z]*$",		{0},  nullmodname, DSKTYPE, },
 };
 
 static int
@@ -1835,26 +1879,26 @@ isdisk(unsigned int major, unsigned int minor,
 
 	return NONTYPE;
 }
-
+#endif
+#ifdef linux
 /*
 ** LINUX SPECIFIC:
-** Determine boot-time of this system (as number of seconds since 1-1-1970).
+** Determine boot-time of this system (as number of jiffies since 1-1-1970).
 */
-time_t	getbootlinux(long);
-
-time_t
+unsigned long long
 getbootlinux(long hertz)
 {
-	int     	cpid;
-	char  	  	tmpbuf[1280];
-	FILE    	*fp;
-	unsigned long 	startticks;
-	time_t		boottime = 0;
+	int    		 	cpid;
+	char  	  		tmpbuf[1280];
+	FILE    		*fp;
+	unsigned long 		startticks;
+	unsigned long long	bootjiffies = 0;
+	struct timespec		ts;
 
 	/*
 	** dirty hack to get the boottime, since the
 	** Linux 2.6 kernel (2.6.5) does not return a proper
-	** boottime-value with the times() system call :-(
+	** boottime-value with the times() system call   :-(
 	*/
 	if ( (cpid = fork()) == 0 )
 	{
@@ -1866,10 +1910,14 @@ getbootlinux(long hertz)
 	else
 	{
 		/*
-		** parent determines start-time (in clock-ticks since boot) 
-		** of the child and calculates the boottime in seconds
+		** parent determines start-time (in jiffies since boot) 
+		** of the child and calculates the boottime in jiffies
 		** since 1-1-1970
 		*/
+		(void) clock_gettime(CLOCK_REALTIME, &ts);	// get current
+		bootjiffies = 1LL * ts.tv_sec  * hertz +
+		              1LL * ts.tv_nsec * hertz / 1000000000LL;
+
 		snprintf(tmpbuf, sizeof tmpbuf, "/proc/%d/stat", cpid);
 
 		if ( (fp = fopen(tmpbuf, "r")) != NULL)
@@ -1879,7 +1927,7 @@ getbootlinux(long hertz)
 			                "%*d %*d %*d %*d %*d %*d %lu",
 			                &startticks) == 1)
 			{
-				boottime = time(0) - startticks / hertz;
+				bootjiffies -= startticks;
 			}
 
 			fclose(fp);
@@ -1892,28 +1940,28 @@ getbootlinux(long hertz)
 		(void) wait((int *)0);
 	}
 
-	return boottime;
-} /* Linux */
-# elif defined(FREEBSD)
- time_t
- getbootbsd(long hertz)
- {
-       int mib [2];
-       size_t size;
-       // time_t now;
-       struct timeval boottime;
-       time_t		uptime = 0;
+	return bootjiffies;
+}
+#elif defined(FREEBSD)
+unsigned long long
+getbootbsd(long hertz)
+{
+    int mib [2];
+    size_t size;
+    // time_t now;
+    struct timeval boottime;
+    time_t		uptime = 0;
 
-       // (void)time(&now);
+    // (void)time(&now);
 
-       mib [0] = CTL_KERN;
-       mib [1] = KERN_BOOTTIME;
+    mib [0] = CTL_KERN;
+    mib [1] = KERN_BOOTTIME;
 
-       size = sizeof(boottime);
+    size = sizeof(boottime);
 
-       if (sysctl(mib, 2, &boottime, &size, NULL, 0) != -1)
-    	    uptime = boottime.tv_sec;
-    	return uptime;
+    if (sysctl(mib, 2, &boottime, &size, NULL, 0) != -1)
+        uptime = (long long)boottime.tv_sec;
+    return uptime;
 }
 #endif
 
